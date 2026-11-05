@@ -33,7 +33,7 @@ export function youtubeEmbedUrl(input) {
   const s = String(input || '').trim();
   if (!s) return null;
   // controls=0 + no pointer events on the iframe: YouTube's title bar / controls only show briefly at
-  // start (which we cover, see REVEAL_MS) and never on hover. Mute and fullscreen are our own buttons.
+  // start (which we cover, see REVEAL_MS) and never on hover. Streams are always muted; click to enlarge.
   const params = 'autoplay=1&mute=1&playsinline=1&rel=0&controls=0&disablekb=1&fs=0&iv_load_policy=3'
     + `&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
   let m;
@@ -139,7 +139,7 @@ function setCover(item, key) {
     cover.dataset.key = key;
     cover.querySelector('.cover-msg').textContent = key === 'notLive' ? t(key) : '';
     const status = item.el.querySelector('.cap-status');
-    status.textContent = t(key); status.dataset.key = key;
+    status.textContent = key === 'liveNow' ? '' : t(key); status.dataset.key = key;
   }
   item.el.classList.toggle('dead', key === 'notLive');
   // Placeholder: YouTube's latest still of the live stream (refreshed by YouTube every few minutes).
@@ -215,6 +215,7 @@ export class Cameras {
       window.addEventListener(ev, onActivity, { passive: true, capture: true });
     }
     setInterval(() => { for (const it of this.items) this.#sync(it); }, 5_000);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.zoomedStream) this.#zoomStream(null); });
     document.addEventListener('visibilitychange', () => {
       this.hiddenSince = document.hidden ? Date.now() : null;
       if (!document.hidden) this.lastActivity = Date.now(); // returning to the tab counts as activity
@@ -249,6 +250,32 @@ export class Cameras {
     }
   }
 
+  /**
+   * Enlarged view of a stream. The player itself is lifted into a centred overlay
+   * with CSS (position: fixed) rather than moved in the DOM: moving a YouTube iframe
+   * reloads it, which would mean reconnecting. A placeholder keeps its grid slot.
+   */
+  #zoomStream(fig) {
+    const cur = this.zoomedStream;
+    if (cur) {
+      cur.classList.remove('zoomed');
+      cur.previousElementSibling?.classList.contains('zoom-placeholder') && cur.previousElementSibling.remove();
+      document.querySelector('.stream-backdrop')?.remove();
+      this.zoomedStream = null;
+    }
+    if (!fig) return;
+    const ph = document.createElement('div');
+    ph.className = 'zoom-placeholder';
+    ph.style.height = `${fig.offsetHeight}px`;
+    fig.before(ph);
+    const backdrop = document.createElement('div');
+    backdrop.className = 'stream-backdrop';
+    backdrop.addEventListener('click', () => this.#zoomStream(null));
+    document.body.appendChild(backdrop);
+    fig.classList.add('zoomed');
+    this.zoomedStream = fig;
+  }
+
   /** Full-screen overlay for a webcam image (kept up to date while open). */
   #showLightbox(fig) {
     let box = document.querySelector('.lightbox');
@@ -278,6 +305,7 @@ export class Cameras {
     this.key = key;
     for (const tm of this.timers) clearInterval(tm);
     this.timers = [];
+    this.#zoomStream(null);
     for (const it of this.items) {
       clearTimeout(it.idleTimer); clearTimeout(it.settleTimer); it.suspend();
       try { it.player?.destroy(); } catch { /* ignore */ }
@@ -296,10 +324,7 @@ export class Cameras {
             <div class="stream-cover" data-key="connecting"><span class="cover-msg"></span></div></div>
           <figcaption><span class="cap-name">${esc(s.name || '')}</span>
             <span class="cap-status" data-key="connecting">${esc(t('connecting'))}</span>
-            <span class="stream-btns">
-              <button type="button" class="icon" data-stream="mute" aria-label="${esc(t('unmute'))}" title="${esc(t('unmute'))}">🔇</button>
-              <button type="button" class="icon" data-stream="full" aria-label="${esc(t('fullscreen'))}" title="${esc(t('fullscreen'))}">⛶</button>
-            </span></figcaption>
+            <button type="button" class="icon zoom-close" data-unzoom aria-label="${esc(t('s_close'))}">✕</button></figcaption>
         </figure>`).join('')}</div>`);
     }
     if (imgs.length) {
@@ -331,20 +356,10 @@ export class Cameras {
       setCover(item, 'connecting'); // show the latest still straight away
       // Fallback if the YouTube API never loads: show the frame anyway.
       setTimeout(() => { if (!item.player) fig.classList.add('ready'); }, 20_000);
+      // Click the video to enlarge it (same look as the webcam overlay).
       fig.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-stream]');
-        if (!btn) return;
-        if (btn.dataset.stream === 'full') {
-          const frame = fig.querySelector('.frame');
-          if (document.fullscreenElement) document.exitFullscreen(); else frame.requestFullscreen?.();
-        } else {
-          try {
-            const muted = item.player.isMuted();
-            if (muted) item.player.unMute(); else item.player.mute();
-            btn.textContent = muted ? '🔊' : '🔇';
-            btn.title = btn.ariaLabel = t(muted ? 'mute' : 'unmute');
-          } catch { /* player not ready */ }
-        }
+        if (e.target.closest('[data-unzoom]')) this.#zoomStream(null);
+        else if (e.target.closest('.frame') && !fig.classList.contains('zoomed')) this.#zoomStream(fig);
       });
     }
     const streamItems = this.items.slice();

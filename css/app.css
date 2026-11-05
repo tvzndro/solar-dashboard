@@ -164,8 +164,7 @@ figure { margin: 0; }
 .cam, .stream { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; position: relative; }
 /* Whole image at its own shape; the caption bar sits underneath, never on top. */
 .cam .media { position: relative; background: #111; }
-.cam img { display: block; width: 100%; height: auto; cursor: zoom-in; }
-.cam img:not([src]) { aspect-ratio: 16 / 9; }
+.cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; cursor: zoom-in; }
 .cam-error { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 13px; }
 figcaption { padding: 5px 10px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
 .cam figcaption, .stream figcaption { display: flex; align-items: center; gap: 8px; }
@@ -173,8 +172,6 @@ figcaption { padding: 5px 10px; font-size: 13px; color: var(--muted); border-top
 .cap-status { font-size: 11px; color: var(--dim); white-space: nowrap; }
 .cap-status[data-key=connecting]::before, .cap-status[data-key=goingLive]::before, .cap-status[data-key=reconnecting]::before {
   content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #ffb000; animation: pulse 1.2s ease-in-out infinite; vertical-align: 0; }
-.cap-status[data-key=liveNow] { color: #ff5a5a; font-weight: 600; letter-spacing: .04em; }
-.cap-status[data-key=liveNow]::before { content: "● "; }
 .cap-status[data-key=notLive] { color: var(--warn); }
 
 /* Webcam overlay */
@@ -192,8 +189,15 @@ figcaption { padding: 5px 10px; font-size: 13px; color: var(--muted); border-top
 .stream.dead .stream-cover { background-image: none !important; display: grid; place-items: center; }
 .stream.dead .cover-msg { color: var(--warn); text-align: center; padding: 0 16px; font-size: 13px; }
 .stream-btns { display: flex; gap: 4px; }
+.stream .frame { cursor: zoom-in; }
+.zoom-close { display: none; }
+/* Enlarged stream: the same player, lifted into a centred overlay. */
+.stream-backdrop { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.85); cursor: zoom-out; }
+.stream.zoomed { position: fixed; z-index: 51; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(calc(100vw - 34px), calc((100vh - 80px) * 16 / 9)); }
+.stream.zoomed .frame { cursor: default; }
+.stream.zoomed .zoom-close { display: inline-block; }
 .stream-btns button { font-size: 14px; min-width: 30px; padding: 1px 6px; }
-.frame:fullscreen { background: #000; }
 
 /* The dashboard fills the first screen; cameras/streams start below it. */
 .dash { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }

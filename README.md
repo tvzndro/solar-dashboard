@@ -28,7 +28,7 @@ Everything is saved in that browser (localStorage). To set up another machine, u
 
 ### Streams
 
-Add YouTube streams in settings: a video ID, a channel ID (UC…) or any YouTube URL. Links are cleaned to a canonical form automatically (tracking parameters such as `pp=`/`si=` removed), and a new stream is named after its YouTube title. Streams autoplay muted, because browsers block autoplay with sound; use the 🔇 button to unmute.
+Add YouTube streams in settings: a video ID, a channel ID (UC…) or any YouTube URL. Links are cleaned to a canonical form automatically (tracking parameters such as `pp=`/`si=` removed), and a new stream is named after its YouTube title. Streams play muted (browsers block autoplay with sound). Click a stream or a webcam to enlarge it.
 
 Use a video ID for a specific camera and a channel ID when the channel only runs one stream. A channel link only ever shows *one* live stream, so it can't be used for channels with several cameras (e.g. NK-Nett).
 
