@@ -16,12 +16,20 @@ export function youtubeEmbedUrl(input) {
   return null;
 }
 
-// ── Live-edge keeping ───────────────────────────────────────────────────
-// YouTube sometimes starts a live embed somewhere in its DVR buffer (e.g. the
-// viewer's remembered position) instead of at "live". We watch the player and
-// jump to the live edge whenever it starts playing, and if it drifts behind.
-const LIVE_LAG_START = 20;   // s behind live tolerated when playback starts
-const LIVE_LAG_DRIFT = 90;   // s behind live tolerated while running
+// ── Keeping live streams near live ──────────────────────────────────────
+// YouTube sometimes starts a live embed far back in its DVR buffer, and a
+// paused or stalled stream falls behind. We measure the real delay with
+// getMediaReferenceTime() (wall-clock time of the frame on screen) and, only
+// when it is well over a minute, seek forward once to ~30 s behind live.
+// Normal live latency is ~15–25 s, so ordinary playback is never touched.
+// (getDuration() is NOT usable for this: on live streams it is frozen and can
+// be off by an hour, which caused seek loops — buffering and flicker.)
+const MAX_LAG = 90;          // s behind live before we step in
+const TARGET_LAG = 30;       // s behind live to land at (safely inside the buffer)
+const SETTLE_MS = 8_000;     // let playback settle before measuring
+const COOLDOWN_MS = 180_000; // at most one correction per stream per 3 min
+const MAX_FAILURES = 3;      // stop trying if corrections don't stick
+
 let ytApi = null;
 function loadYouTubeApi() {
   if (!ytApi) {
@@ -37,15 +45,33 @@ function loadYouTubeApi() {
   return ytApi;
 }
 
+/** Seconds the displayed frame is behind real time, or null if unknown / not live. */
 function liveLag(p) {
   try {
-    if (p.getVideoData?.().isLive !== true) return 0; // only ever touch live streams
-    return p.getDuration() - p.getCurrentTime();
-  } catch { return 0; }
+    if (p.getVideoData?.().isLive !== true) return null;
+    const ref = p.getMediaReferenceTime?.();
+    if (!ref) return null;
+    const lag = Date.now() / 1000 - ref;
+    return lag > -120 && lag < 7 * 86400 ? Math.max(0, lag) : null; // ignore nonsense / clock skew
+  } catch { return null; }
 }
 
-function goLive(p, tolerance) {
-  if (liveLag(p) > tolerance) { try { p.seekTo(p.getDuration(), true); } catch { /* player gone */ } }
+/** One correction attempt, guarded by cooldown and a failure limit (no seek loops). */
+function keepLive(item) {
+  const p = item.player;
+  try { if (!p || p.getPlayerState() !== 1 /* PLAYING */) return; } catch { return; }
+  const lag = liveLag(p);
+  if (lag == null) return;
+  if (lag <= MAX_LAG) { item.failures = 0; return; }
+  if (item.failures >= MAX_FAILURES || Date.now() - (item.lastFix || 0) < COOLDOWN_MS) return;
+  item.lastFix = Date.now();
+  item.failures = (item.failures || 0) + 1;
+  try { p.seekTo(p.getCurrentTime() + (lag - TARGET_LAG), true); } catch { /* player gone */ }
+}
+
+function scheduleKeepLive(item) {
+  clearTimeout(item.settleTimer);
+  item.settleTimer = setTimeout(() => keepLive(item), SETTLE_MS);
 }
 
 function bust(url) {
@@ -68,8 +94,8 @@ export class Cameras {
     });
     document.addEventListener('visibilitychange', () => {
       for (const item of this.items) this.#sync(item);
-      // Coming back to the tab: snap running streams back to live.
-      if (!document.hidden) for (const it of this.items) if (it.player && it.active) goLive(it.player, LIVE_LAG_START);
+      // Coming back to the tab: check running streams haven't fallen behind.
+      if (!document.hidden) for (const it of this.items) if (it.player && it.active) scheduleKeepLive(it);
     });
   }
 
@@ -95,7 +121,7 @@ export class Cameras {
     for (const tm of this.timers) clearInterval(tm);
     this.timers = [];
     for (const it of this.items) {
-      clearTimeout(it.idleTimer); it.suspend();
+      clearTimeout(it.idleTimer); clearTimeout(it.settleTimer); it.suspend();
       try { it.player?.destroy(); } catch { /* ignore */ }
     }
     this.items = [];
@@ -128,7 +154,7 @@ export class Cameras {
       const item = {
         el: fig, inView: false, active: true, player: null,
         suspend: () => { try { item.player?.pauseVideo(); } catch { /* not ready */ } },
-        resume: () => { try { item.player?.playVideo(); } catch { /* not ready */ } },
+        resume: () => { item.failures = 0; try { item.player?.playVideo(); } catch { /* not ready */ } },
       };
       this.items.push(item);
     }
@@ -176,16 +202,13 @@ export class Cameras {
       item.player = new YT.Player(item.el.querySelector('iframe'), {
         events: {
           onReady: (e) => { if (!item.active) e.target.pauseVideo(); },
-          onStateChange: (e) => { if (e.data === YT.PlayerState.PLAYING) goLive(e.target, LIVE_LAG_START); },
+          onStateChange: (e) => { if (e.data === YT.PlayerState.PLAYING) scheduleKeepLive(item); },
         },
       });
     }
-    // Catch drift (stalls, sleeping laptop) and re-sync running streams.
+    // Catch slow drift (stalls, sleeping laptop).
     this.timers.push(setInterval(() => {
-      if (document.hidden) return;
-      for (const it of items) {
-        try { if (it.active && it.player?.getPlayerState?.() === YT.PlayerState.PLAYING) goLive(it.player, LIVE_LAG_DRIFT); } catch { /* not ready */ }
-      }
+      if (!document.hidden) for (const it of items) if (it.active) keepLive(it);
     }, 60_000));
   }
 }
