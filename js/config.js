@@ -4,7 +4,6 @@
 // cameras: a fresh browser starts with the settings dialog open.
 
 import { canonicalStreamLink } from './cameras.js';
-import { presetFor } from './presets.js';
 
 const LS_KEY = 'solar-dashboard.overrides.v1';
 
@@ -19,7 +18,7 @@ export const BUILTIN_DEFAULTS = {
   },
   overlays: { sunCurve: true, moon: true, temperature: true, tide: true, clouds: true, precipitation: true, kp: true },
   snowWindowHours: 12,
-  cameras: { images: [], streams: null, streamIdleMinutes: 5 }, // streamIdleMinutes: keep streams running this long after the last user activity // streams: null = the location's default streams (presets.js)
+  cameras: { images: [], streams: [], streamIdleMinutes: 5 }, // streamIdleMinutes: keep streams running this long after the last user activity
   debug: { showSources: false, mock: false },
 };
 
@@ -86,10 +85,9 @@ function normaliseLayout(cfg) {
   return cfg;
 }
 
-/** The stream list in effect: the user's own list, or the default streams for the location. */
+/** The configured stream list (older configs may have null). */
 export function streamsFor(cfg) {
-  if (Array.isArray(cfg.cameras?.streams)) return cfg.cameras.streams;
-  return presetFor(cfg.location)?.streams || [];
+  return Array.isArray(cfg.cameras?.streams) ? cfg.cameras.streams : [];
 }
 
 function canonicalStreams(list) {

@@ -4,7 +4,6 @@
 import { t, language } from './i18n.js';
 import { getPath, streamsFor } from './config.js';
 import { canonicalStreamLink, streamTitle } from './cameras.js';
-import { presetFor } from './presets.js';
 import { geocode } from './data/fetchers.js';
 import { SNOW_WINDOWS } from './cards.js';
 import { isValidTimeZone } from './time.js';
@@ -129,7 +128,6 @@ export class Settings {
                 ${[1, 5, 15, 60].map((n) => `<option value="${n}" ${c.cameras.streamIdleMinutes === n ? 'selected' : ''}>${n} min</option>`).join('')}
               </select></label>
             <p class="hint">${esc(t('s_streamIdleHint'))}</p>
-            ${!Array.isArray(c.cameras.streams) && presetFor(c.location) ? `<p class="hint">${esc(t('s_streamPreset', presetFor(c.location).place))}</p>` : ''}
             ${streamsFor(c).map((s, i) => `
               <div class="cam-row">
                 <input data-cam="streams" data-i="${i}" data-field="name" value="${esc(s.name)}" placeholder="${esc(t('s_name'))}">
@@ -281,7 +279,7 @@ export class Settings {
     }
   }
 
-  /** Editable copy of a camera list; streams start from the location's defaults if the user has none. */
+  /** Editable copy of a camera list. */
   #list(kind) {
     const c = this.config.effective;
     return (kind === 'streams' ? streamsFor(c) : c.cameras.images).map((x) => ({ ...x }));

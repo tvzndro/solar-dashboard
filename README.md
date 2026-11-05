@@ -32,8 +32,6 @@ Add YouTube streams in settings: a video ID, a channel ID (UC…) or any YouTube
 
 Use a video ID for a specific camera and a channel ID when the channel only runs one stream. A channel link only ever shows *one* live stream, so it can't be used for channels with several cameras (e.g. NK-Nett).
 
-Without a stream list of your own, a location near Bodø gets the built-in defaults: Molostua, Linken and Golfklubb (see `js/presets.js`). Editing the list replaces them; resetting it brings them back.
-
 While a stream connects it shows YouTube's latest still image of that camera, and it is only uncovered once verified to be playing at the live edge (YouTube often starts embeds at the beginning of its 12-hour rewind buffer). Streams that drift more than 40 s behind jump back to live. A stream that errors or ends is reconnected automatically (after 5 s, 20 s, 60 s); only then does it show a notice to replace the link.
 
 Webcams stop refreshing a minute after leaving view. Streams on screen always play; scrolled out of view they keep running while you're using the page, and stop after *Keep streams running after last activity* (default 5 min; 1/15/60 available) without mouse, keyboard, touch or scroll activity. Any activity starts them again in the background, so they're usually live by the time you scroll down. A running stream costs about 0.35 Mbit/s (~160 MB/hour). YouTube serves these streams at 480p regardless of player size, so there's no cheaper way to keep one connected. In a background tab streams always stop after a minute.
