@@ -3,6 +3,8 @@
 const STRINGS = {
   en: {
     locale: 'en-GB',
+    reconnecting: 'Reconnecting…',
+    s_streamIdle: 'Keep streams running after scrolling away', s_streamIdleHint: 'Longer = instant when you scroll back, but each running stream uses about 0.35 Mbit/s (~160 MB per hour). In a background tab streams always stop after 1 min.',
     goingLive: 'Jumping to live…', notLive: 'This stream is not live — the link may have changed (edit it in Settings)',
     s_streamPreset: (place) => `Default live streams for ${place}. Edit the list to use your own.`,
     connecting: 'Connecting to live stream…', mute: 'Mute', unmute: 'Unmute', fullscreen: 'Fullscreen',
@@ -88,6 +90,8 @@ const STRINGS = {
   },
   nb: {
     locale: 'nb-NO',
+    reconnecting: 'Kobler til på nytt…',
+    s_streamIdle: 'La sendinger gå etter at du har scrollet bort', s_streamIdleHint: 'Lengre = umiddelbart når du scroller tilbake, men hver sending bruker ca. 0,35 Mbit/s (~160 MB i timen). I en bakgrunnsfane stopper sendinger alltid etter 1 min.',
     goingLive: 'Hopper til direkte…', notLive: 'Denne sendingen er ikke direkte — lenken kan ha endret seg (endre den i Innstillinger)',
     s_streamPreset: (place) => `Standard direktesendinger for ${place}. Endre lista for å bruke dine egne.`,
     connecting: 'Kobler til direktesending…', mute: 'Demp lyd', unmute: 'Slå på lyd', fullscreen: 'Fullskjerm',

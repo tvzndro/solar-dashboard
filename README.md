@@ -34,7 +34,9 @@ Use a video ID for a specific camera and a channel ID when the channel only runs
 
 Without a stream list of your own, a location near Bodø gets the built-in defaults: Molostua, Linken and Golfklubb (see `js/presets.js`). Editing the list replaces them; resetting it brings them back.
 
-Each stream stays covered until it is verified to be playing at the live edge (YouTube often starts embeds at the beginning of its 12-hour rewind buffer); streams that drift more than 40 s behind jump back to live. If a stream ends or its link stops working, the stream shows a notice to replace the link. Webcams and streams stop after a minute out of view and resume, live, when scrolled back into view.
+While a stream connects it shows YouTube's latest still image of that camera, and it is only uncovered once verified to be playing at the live edge (YouTube often starts embeds at the beginning of its 12-hour rewind buffer). Streams that drift more than 40 s behind jump back to live. A stream that errors or ends is reconnected automatically (after 5 s, 20 s, 60 s); only then does it show a notice to replace the link.
+
+Out of view, webcams stop refreshing after a minute. Streams stop after *Keep streams running after scrolling away* (default 1 min; 5/15/60 min available). Longer means streams are instant when you scroll back, at about 0.35 Mbit/s (~160 MB/hour) per running stream. YouTube serves these streams at 480p regardless of player size, so there's no cheaper way to keep one connected. In a background tab streams always stop after a minute.
 
 ## Data sources (all keyless, browser-direct)
 

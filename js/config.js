@@ -19,7 +19,7 @@ export const BUILTIN_DEFAULTS = {
   },
   overlays: { sunCurve: true, moon: true, temperature: true, tide: true, clouds: true, precipitation: true, kp: true },
   snowWindowHours: 12,
-  cameras: { images: [], streams: null }, // streams: null = the location's default streams (presets.js)
+  cameras: { images: [], streams: null, streamIdleMinutes: 1 }, // streams: null = the location's default streams (presets.js)
   debug: { showSources: false, mock: false },
 };
 

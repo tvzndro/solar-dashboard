@@ -51,7 +51,7 @@ export function youtubeEmbedUrl(input) {
 // stopped live stream restarts at the live edge while a paused one resumes late.
 // (getDuration() is NOT usable for this: on live streams it is frozen and can
 // be off by an hour, which caused seek loops — buffering and flicker.)
-const REVEAL_MS = 5_000;     // keep a stream covered this long after it starts playing (YouTube's start overlay)
+const REVEAL_MS = 4_200;     // keep a stream covered this long after it starts playing at live (YouTube's start overlay is gone by ~4 s)
 const MAX_LAG = 40;          // s behind real time before we step in (normal latency is 15–25 s)
 const SETTLE_MS = 8_000;     // let playback settle before measuring
 const COOLDOWN_MS = 180_000; // at most one correction per stream per 3 min
@@ -93,9 +93,9 @@ function watchUntilLive(item) {
   if (item.el.classList.contains('ready') || !item.active || !item.player) return;
   let state, data;
   try { state = item.player.getPlayerState(); data = item.player.getVideoData?.() || {}; } catch { return; }
-  if (state === 0 || item.errored) { setCover(item, 'notLive'); return; } // ended / unavailable
+  if (state === 0 || item.errored) return; // ended / error: handled by recover()
   if (state !== 1) { item.liveSince = null; return; }
-  if (data.isLive === false) { setCover(item, 'notLive'); return; }
+  if (data.isLive === false) { recover(item); return; }
   const lag = liveLag(item.player);
   if (lag != null && lag > MAX_LAG) {
     item.liveSince = null;
@@ -107,13 +107,53 @@ function watchUntilLive(item) {
     return;
   }
   item.liveSince ??= Date.now();
-  if (Date.now() - item.liveSince >= REVEAL_MS) item.el.classList.add('ready');
+  if (Date.now() - item.liveSince >= REVEAL_MS) { item.el.classList.add('ready'); item.recoveries = 0; }
+}
+
+/**
+ * A live stream ended or errored. Live streams hiccup (encoder restarts, network
+ * blips), so reload it a few times before telling the user the link is dead.
+ */
+const RECOVER_DELAYS = [5_000, 20_000, 60_000];
+function recover(item) {
+  item.el.classList.remove('ready');
+  item.liveSince = null;
+  if (item.recoverTimer) return; // already scheduled
+  const n = item.recoveries || 0;
+  if (n >= RECOVER_DELAYS.length || !item.videoId) { setCover(item, 'notLive'); return; }
+  setCover(item, 'reconnecting');
+  item.recoverTimer = setTimeout(() => {
+    item.recoverTimer = null;
+    item.recoveries = n + 1;
+    item.errored = false;
+    console.debug(`[stream ${item.videoId}] reconnect attempt ${n + 1}`);
+    try { item.player.loadVideoById(item.videoId); } catch { /* player gone */ }
+  }, RECOVER_DELAYS[n]);
 }
 
 function setCover(item, key) {
   const cover = item.el.querySelector('.stream-cover');
-  if (cover && cover.dataset.key !== key) { cover.dataset.key = key; cover.textContent = t(key); }
+  if (!cover) return;
+  if (cover.dataset.key !== key) { cover.dataset.key = key; cover.querySelector('.cover-label').textContent = t(key); }
   item.el.classList.toggle('dead', key === 'notLive');
+  // Placeholder: YouTube's latest still of the live stream (refreshed by YouTube every few minutes).
+  const id = item.videoId;
+  if (id && key !== 'notLive') {
+    const bucket = Math.floor(Date.now() / 300_000); // matches YouTube's 5-min cache
+    if (cover.dataset.bucket !== String(bucket)) {
+      cover.dataset.bucket = bucket;
+      const url = `https://i.ytimg.com/vi/${id}/maxresdefault_live.jpg?b=${bucket}`;
+      const img = new Image();
+      img.onload = () => { cover.style.backgroundImage = `url("${url}")`; };
+      img.onerror = () => { cover.style.backgroundImage = `url("https://i.ytimg.com/vi/${id}/hqdefault_live.jpg?b=${bucket}")`; };
+      img.src = url;
+    }
+  }
+}
+
+export function videoIdOf(link) {
+  const m = canonicalStreamLink(link).match(/[?&]v=([\w-]{11})/);
+  return m ? m[1] : null;
 }
 
 /** One correction attempt, guarded by cooldown and a failure limit (no seek loops). */
@@ -127,6 +167,7 @@ function keepLive(item) {
   if (item.failures >= MAX_FAILURES || Date.now() - (item.lastFix || 0) < COOLDOWN_MS) return;
   item.lastFix = Date.now();
   item.failures = (item.failures || 0) + 1;
+  console.debug(`[stream ${item.videoId}] drift ${Math.round(lag)} s → jump to live`);
   try { p.seekTo(p.getCurrentTime() + lag + 60, true); } catch { /* player gone */ }
 }
 
@@ -139,7 +180,7 @@ function bust(url) {
   return url + (url.includes('?') ? '&' : '?') + '_ts=' + Math.floor(Date.now() / 1000);
 }
 
-const IDLE_TIMEOUT = 60_000; // pause a camera/stream after this long out of view
+const IDLE_TIMEOUT = 60_000; // stop refreshing a webcam after this long out of view (streams: configurable)
 
 export class Cameras {
   constructor(container) {
@@ -170,12 +211,15 @@ export class Cameras {
       clearTimeout(item.idleTimer); item.idleTimer = null;
       if (!item.active) { item.active = true; item.resume(); }
     } else if (item.active && !item.idleTimer) {
-      item.idleTimer = setTimeout(() => { item.idleTimer = null; item.active = false; item.suspend(); }, IDLE_TIMEOUT);
+      // A hidden tab always idles after a minute; out-of-view streams may be kept running longer.
+      const wait = item.kind === 'stream' && !document.hidden ? this.streamIdleMs : IDLE_TIMEOUT;
+      item.idleTimer = setTimeout(() => { item.idleTimer = null; item.active = false; item.suspend(); }, wait);
     }
   }
 
   /** Only rebuilds when the camera config actually changed, so streams keep playing. */
-  update({ images, streams, showCameras, showStreams }) {
+  update({ images, streams, showCameras, showStreams, streamIdleMinutes = 1 }) {
+    this.streamIdleMs = Math.max(1, streamIdleMinutes) * 60_000; // takes effect next time a stream leaves view
     const key = JSON.stringify([images, streams, showCameras, showStreams, t('cameras')]);
     if (key === this.key) return;
     this.key = key;
@@ -196,7 +240,7 @@ export class Cameras {
         <figure class="stream">
           <div class="frame"><iframe src="${esc(s.embed)}" title="${esc(s.name || 'YouTube')}" tabindex="-1"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
-            <div class="stream-cover" data-key="connecting">${esc(t('connecting'))}</div></div>
+            <div class="stream-cover" data-key="connecting"><span class="cover-label">${esc(t('connecting'))}</span></div></div>
           <figcaption><span>${esc(s.name || '')}</span>
             <span class="stream-btns">
               <button type="button" class="icon" data-stream="mute" aria-label="${esc(t('unmute'))}" title="${esc(t('unmute'))}">🔇</button>
@@ -218,14 +262,16 @@ export class Cameras {
     // Streams: stop when idle, play again (at the live edge) when seen.
     for (const fig of this.el.querySelectorAll('.stream')) {
       const item = {
-        el: fig, inView: false, active: true, player: null,
+        kind: 'stream', el: fig, inView: false, active: true, player: null, videoId: videoIdOf(strs[this.items.length].youtube),
         suspend: () => {
           fig.classList.remove('ready'); item.liveSince = null; setCover(item, 'connecting');
+          clearTimeout(item.recoverTimer); item.recoverTimer = null; item.errored = false;
           try { item.player?.stopVideo(); } catch { /* not ready */ }
         },
         resume: () => { item.failures = 0; try { item.player?.playVideo(); } catch { /* not ready */ } },
       };
       this.items.push(item);
+      setCover(item, 'connecting'); // show the latest still straight away
       // Fallback if the YouTube API never loads: show the frame anyway.
       setTimeout(() => { if (!item.player) fig.classList.add('ready'); }, 20_000);
       fig.addEventListener('click', (e) => {
@@ -289,10 +335,19 @@ export class Cameras {
         events: {
           onReady: (e) => { if (!item.active) e.target.stopVideo(); },
           onStateChange: (e) => {
-            if (e.data === YT.PlayerState.PLAYING) { item.errored = false; scheduleKeepLive(item); }
-            if (e.data === YT.PlayerState.ENDED) { item.el.classList.remove('ready'); setCover(item, 'notLive'); }
+            console.debug(`[stream ${item.videoId}] state ${e.data}`, { lag: liveLag(e.target), ready: item.el.classList.contains('ready') });
+            if (e.data === YT.PlayerState.PLAYING) {
+              item.errored = false;
+              if (item.el.querySelector('.stream-cover').dataset.key === 'reconnecting') setCover(item, 'connecting');
+              scheduleKeepLive(item);
+            }
+            if (e.data === YT.PlayerState.ENDED && item.active) recover(item);
           },
-          onError: () => { item.errored = true; item.el.classList.remove('ready'); setCover(item, 'notLive'); },
+          onError: (e) => {
+            console.debug(`[stream ${item.videoId}] error ${e.data}`);
+            item.errored = true;
+            if (item.active) recover(item);
+          },
         },
       });
     }

@@ -132,7 +132,7 @@ function render() {
     units: c.units, showSources: c.debug.showSources,
   }, c.layout.cards);
 
-  cameras.update({ images: c.cameras.images, streams: streamsFor(c), showCameras: c.layout.showCameras, showStreams: c.layout.showStreams });
+  cameras.update({ images: c.cameras.images, streams: streamsFor(c), showCameras: c.layout.showCameras, showStreams: c.layout.showStreams, streamIdleMinutes: c.cameras.streamIdleMinutes });
 
   // Status line.
   const srcs = Object.values(store.sources);

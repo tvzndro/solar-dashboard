@@ -124,6 +124,11 @@ export class Settings {
             <button type="button" data-act="cam-add" data-list="images">+ ${esc(t('s_add'))}</button>
             <h3>${esc(t('s_streamList'))} ${this.marker('cameras.streams')}</h3>
             <p class="hint">${esc(t('s_streamHint'))}</p>
+            <label>${esc(t('s_streamIdle'))} ${this.marker('cameras.streamIdleMinutes')}
+              <select data-bind="cameras.streamIdleMinutes" data-type="number">
+                ${[1, 5, 15, 60].map((n) => `<option value="${n}" ${c.cameras.streamIdleMinutes === n ? 'selected' : ''}>${n} min</option>`).join('')}
+              </select></label>
+            <p class="hint">${esc(t('s_streamIdleHint'))}</p>
             ${!Array.isArray(c.cameras.streams) && presetFor(c.location) ? `<p class="hint">${esc(t('s_streamPreset', presetFor(c.location).place))}</p>` : ''}
             ${streamsFor(c).map((s, i) => `
               <div class="cam-row">
