@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Solar Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='8' cy='8' r='6' fill='%23ffb000'/></svg>">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div id="mock-banner" class="banner" hidden></div>
+  <header class="top">
+    <div class="where">
+      <h1 id="place">…</h1>
+      <div id="date" class="date"></div>
+    </div>
+    <div class="when">
+      <span id="view-time" class="clock">--:--</span>
+      <span id="view-rel" class="rel"></span>
+    </div>
+    <nav class="nav">
+      <button id="prev" class="icon" type="button" aria-label="Previous day">‹</button>
+      <button id="today" type="button" hidden>Today</button>
+      <button id="next" class="icon" type="button" aria-label="Next day">›</button>
+      <button id="settings-btn" class="icon" type="button" aria-label="Settings">⚙</button>
+    </nav>
+  </header>
+
+  <main>
+    <div id="days" class="days"></div>
+    <div id="graphic" class="graphic"></div>
+    <div id="legend" class="legend" role="group"></div>
+    <div id="cards" class="cards"></div>
+    <div id="cameras" class="cameras" hidden></div>
+  </main>
+
+  <footer id="status" class="status"></footer>
+
+  <dialog id="settings"></dialog>
+
+  <noscript>This dashboard needs JavaScript.</noscript>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
