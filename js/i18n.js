@@ -3,6 +3,7 @@
 const STRINGS = {
   en: {
     locale: 'en-GB',
+    connecting: 'Connecting to live stream…', mute: 'Mute', unmute: 'Unmute', fullscreen: 'Fullscreen',
     card_tide: 'Tide', ov_tide: 'Tide', nextHigh: 'Next high water', nextLow: 'Next low water',
     tideRising: 'rising', tideFalling: 'falling', relMsl: 'relative to mean sea level',
     weatherEffect: 'Weather effect', weatherEffectHint: 'water level minus astronomical tide (wind and air pressure)',
@@ -85,6 +86,7 @@ const STRINGS = {
   },
   nb: {
     locale: 'nb-NO',
+    connecting: 'Kobler til direktesending…', mute: 'Demp lyd', unmute: 'Slå på lyd', fullscreen: 'Fullskjerm',
     card_tide: 'Tidevann', ov_tide: 'Tidevann', nextHigh: 'Neste høyvann', nextLow: 'Neste lavvann',
     tideRising: 'stigende', tideFalling: 'synkende', relMsl: 'i forhold til middelvann',
     weatherEffect: 'Værvirkning', weatherEffectHint: 'vannstand minus astronomisk tidevann (vind og lufttrykk)',

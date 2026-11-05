@@ -8,7 +8,10 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&
 export function youtubeEmbedUrl(input) {
   const s = String(input || '').trim();
   if (!s) return null;
-  const params = `autoplay=1&mute=1&playsinline=1&rel=0&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
+  // controls=0 + no pointer events on the iframe: YouTube's title bar / controls only show briefly at
+  // start (which we cover, see REVEAL_MS) and never on hover. Mute and fullscreen are our own buttons.
+  const params = 'autoplay=1&mute=1&playsinline=1&rel=0&controls=0&disablekb=1&fs=0&iv_load_policy=3'
+    + `&enablejsapi=1&origin=${encodeURIComponent(location.origin)}`;
   let m;
   if ((m = s.match(/(?:channel\/|^)(UC[\w-]{22})/))) return `https://www.youtube.com/embed/live_stream?channel=${m[1]}&${params}`;
   if ((m = s.match(/(?:v=|youtu\.be\/|\/live\/|\/embed\/|\/shorts\/)([\w-]{11})/))) return `https://www.youtube.com/embed/${m[1]}?${params}`;
@@ -25,6 +28,7 @@ export function youtubeEmbedUrl(input) {
 // stopped live stream restarts at the live edge while a paused one resumes late.
 // (getDuration() is NOT usable for this: on live streams it is frozen and can
 // be off by an hour, which caused seek loops — buffering and flicker.)
+const REVEAL_MS = 5_000;     // keep a stream covered this long after it starts playing (YouTube's start overlay)
 const MAX_LAG = 40;          // s behind real time before we step in (normal latency is 15–25 s)
 const SETTLE_MS = 8_000;     // let playback settle before measuring
 const COOLDOWN_MS = 180_000; // at most one correction per stream per 3 min
@@ -133,9 +137,14 @@ export class Cameras {
     if (strs.length) {
       parts.push(`<h2 class="section-title">${esc(t('streams'))}</h2><div class="stream-grid">${strs.map((s) => `
         <figure class="stream">
-          <div class="frame"><iframe src="${esc(s.embed)}" title="${esc(s.name || 'YouTube')}"
-            allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe></div>
-          ${s.name ? `<figcaption>${esc(s.name)}</figcaption>` : ''}
+          <div class="frame"><iframe src="${esc(s.embed)}" title="${esc(s.name || 'YouTube')}" tabindex="-1"
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+            <div class="stream-cover">${esc(t('connecting'))}</div></div>
+          <figcaption><span>${esc(s.name || '')}</span>
+            <span class="stream-btns">
+              <button type="button" class="icon" data-stream="mute" aria-label="${esc(t('unmute'))}" title="${esc(t('unmute'))}">🔇</button>
+              <button type="button" class="icon" data-stream="full" aria-label="${esc(t('fullscreen'))}" title="${esc(t('fullscreen'))}">⛶</button>
+            </span></figcaption>
         </figure>`).join('')}</div>`);
     }
     if (imgs.length) {
@@ -153,10 +162,30 @@ export class Cameras {
     for (const fig of this.el.querySelectorAll('.stream')) {
       const item = {
         el: fig, inView: false, active: true, player: null,
-        suspend: () => { try { item.player?.stopVideo(); } catch { /* not ready */ } },
+        suspend: () => {
+          clearTimeout(item.revealTimer); item.revealTimer = null; fig.classList.remove('ready');
+          try { item.player?.stopVideo(); } catch { /* not ready */ }
+        },
         resume: () => { item.failures = 0; try { item.player?.playVideo(); } catch { /* not ready */ } },
       };
       this.items.push(item);
+      // Fallback if the YouTube API never loads: show the frame anyway.
+      item.revealTimer = setTimeout(() => fig.classList.add('ready'), 20_000);
+      fig.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-stream]');
+        if (!btn) return;
+        if (btn.dataset.stream === 'full') {
+          const frame = fig.querySelector('.frame');
+          if (document.fullscreenElement) document.exitFullscreen(); else frame.requestFullscreen?.();
+        } else {
+          try {
+            const muted = item.player.isMuted();
+            if (muted) item.player.unMute(); else item.player.mute();
+            btn.textContent = muted ? '🔊' : '🔇';
+            btn.title = btn.ariaLabel = t(muted ? 'mute' : 'unmute');
+          } catch { /* player not ready */ }
+        }
+      });
     }
     const streamItems = this.items.slice();
     if (streamItems.length) this.#attachPlayers(streamItems, key);
@@ -202,7 +231,15 @@ export class Cameras {
       item.player = new YT.Player(item.el.querySelector('iframe'), {
         events: {
           onReady: (e) => { if (!item.active) e.target.stopVideo(); },
-          onStateChange: (e) => { if (e.data === YT.PlayerState.PLAYING) scheduleKeepLive(item); },
+          onStateChange: (e) => {
+            if (e.data !== YT.PlayerState.PLAYING) return;
+            scheduleKeepLive(item);
+            // Uncover once YouTube's start-of-playback overlay has faded.
+            if (!item.el.classList.contains('ready')) {
+              clearTimeout(item.revealTimer);
+              item.revealTimer = setTimeout(() => item.el.classList.add('ready'), REVEAL_MS);
+            }
+          },
         },
       });
     }

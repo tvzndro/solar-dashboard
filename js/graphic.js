@@ -28,13 +28,23 @@ const COLORS = {
   label: '#8a8a8a',
   warm: '#ff9a5c',
   cold: '#8fdcff',
-  tempShadow: 'rgba(0,0,0,0.55)',
 };
 
 const PRECIP_H = 40;
 const LABEL_H = 26;
 const PAD_X = 10;
 const TOUCH_HOLD = 3000;
+const LABEL_FONT = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif';
+const LABEL_FONT_SMALL = '500 11px system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif';
+
+/** Text with a dark outline so it reads on any band, cloud or curve. */
+function outlinedText(ctx, text, x, y, color) {
+  ctx.save();
+  ctx.lineJoin = 'round'; ctx.lineWidth = 3.5; ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = color; ctx.fillText(text, x, y);
+  ctx.restore();
+}
 
 export class DayGraphic {
   constructor(container, { onScrub }) {
@@ -189,23 +199,7 @@ export class DayGraphic {
       ctx.setLineDash([]);
     }
 
-    // Moon and sun discs follow their curves and slide out of the frame (clipped) when off-scale.
-    if (overlays.moon && m.moon) {
-      const mr = Math.max(7, Math.min(10, plotH / 20));
-      const mp = moonPosition(m.viewT, m.lat, m.lon);
-      ctx.save();
-      ctx.translate(xOf(m.viewT), yOf(mp.elevation));
-      ctx.globalAlpha = mp.elevation < 0 ? 0.5 : 1;
-      ctx.fillStyle = COLORS.moonDark;
-      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowColor = 'rgba(200,220,255,0.7)'; ctx.shadowBlur = mr * 1.2;
-      ctx.fillStyle = COLORS.moonLit;
-      ctx.fill(new Path2D(litPath(mr, moonIllumination(m.viewT), m.lat < 0)));
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(220,230,255,0.35)'; ctx.lineWidth = 0.75;
-      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-    }
+    // Sun and moon discs (moon in front) follow their curves and slide out of the frame (clipped) when off-scale.
     {
       const r = Math.max(8, Math.min(11, plotH / 18));
       const sx = xOf(m.viewT), sy = yOf(elevationAt(sun, m.viewT));
@@ -221,8 +215,27 @@ export class DayGraphic {
       ctx.restore();
     }
 
+    if (overlays.moon && m.moon) {
+      const mr = Math.max(7, Math.min(10, plotH / 20));
+      const mp = moonPosition(m.viewT, m.lat, m.lon);
+      ctx.save();
+      ctx.translate(xOf(m.viewT), yOf(mp.elevation));
+      ctx.globalAlpha = mp.elevation < 0 ? 0.5 : 1;
+      ctx.fillStyle = COLORS.moonDark;
+      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = 'rgba(200,220,255,0.7)'; ctx.shadowBlur = mr * 1.2;
+      ctx.fillStyle = COLORS.moonLit;
+      ctx.fill(new Path2D(litPath(mr, moonIllumination(m.viewT), m.lat < 0)));
+      ctx.shadowBlur = 0;
+      // Dark ring + light rim keep the moon readable in front of the sun.
+      ctx.beginPath(); ctx.arc(0, 0, mr + 0.75, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(225,235,255,0.6)'; ctx.lineWidth = 0.75; ctx.stroke();
+      ctx.restore();
+    }
+
     // Tide: mean sea level on the horizon line, high water up.
-    let tideDot = null;
     if (overlays.tide && store.tide?.points?.length) {
       const maxAbs = Math.max(30, ...store.tide.points.map((p) => Math.abs(p.level)));
       const yH = (cm) => mid - (cm / (maxAbs * 1.15)) * (plotH / 2);
@@ -238,20 +251,16 @@ export class DayGraphic {
         ctx.stroke();
       });
       // High/low water times.
-      ctx.font = '10px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-      ctx.fillStyle = COLORS.tide;
+      ctx.font = LABEL_FONT_SMALL;
       for (const e of store.tide.extremes.filter((e) => e.t >= start && e.t < end)) {
         const x = xOf(e.t), y = yH(store.tideAt(e.t)?.level ?? e.level);
         ctx.textAlign = x < L + 20 ? 'left' : x > R - 20 ? 'right' : 'center';
         ctx.textBaseline = e.type === 'high' ? 'bottom' : 'top';
-        ctx.fillText(clock(e.t), x, Math.min(B - 12, Math.max(T + 12, e.type === 'high' ? y - 3 : y + 3)));
+        outlinedText(ctx, clock(e.t), x, Math.min(B - 12, Math.max(T + 12, e.type === 'high' ? y - 3 : y + 3)), COLORS.tide);
       }
-      const v = store.tideAt(m.viewT);
-      if (v) tideDot = { x: xOf(m.viewT), y: yH(v.level) };
     }
 
     // Temperature: the horizon doubles as 0 °C (freezing), warm above, cold below.
-    let tempDot = null;
     if (overlays.temperature && store.instants.length) {
       const maxAbs = Math.max(...store.instants.map((i) => Math.abs(i.temp)));
       const tScale = Math.max(15, Math.ceil(maxAbs * 1.15));
@@ -280,17 +289,14 @@ export class DayGraphic {
       if (valid.length > 1) {
         const hi = valid.reduce((a, b) => (b.c > a.c ? b : a));
         const lo = valid.reduce((a, b) => (b.c < a.c ? b : a));
-        ctx.font = '10px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
-        ctx.shadowColor = COLORS.tempShadow; ctx.shadowBlur = 3;
+        ctx.font = LABEL_FONT;
         for (const [p, above] of [[hi, true], [lo, false]]) {
           if (hi === lo && !above) continue;
-          ctx.fillStyle = p.c >= 0 ? COLORS.warm : COLORS.cold;
           ctx.textAlign = p.x < L + 20 ? 'left' : p.x > R - 20 ? 'right' : 'center';
           ctx.textBaseline = above ? 'bottom' : 'top';
-          const y = Math.min(B - 12, Math.max(T + 12, above ? p.y - 4 : p.y + 4));
-          ctx.fillText(tempShort(p.c), p.x, y);
+          const y = Math.min(B - 14, Math.max(T + 14, above ? p.y - 4 : p.y + 4));
+          outlinedText(ctx, tempShort(p.c), p.x, y, p.c >= 0 ? COLORS.warm : COLORS.cold);
         }
-        ctx.shadowBlur = 0;
       }
       // Freezing-point tag on the horizon line.
       ctx.font = '10px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
@@ -298,8 +304,6 @@ export class DayGraphic {
       ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
       ctx.fillText(fmtTemp(0), R - 4, mid - 2);
 
-      const v = store.instantAt(m.viewT);
-      if (v) tempDot = { x: xOf(m.viewT), y: yT(v.temp), c: v.temp };
     }
     ctx.restore();
 
@@ -357,15 +361,6 @@ export class DayGraphic {
       ctx.fillText(label, lx + tw / 2, B + 7);
     }
 
-    if (tideDot) {
-      ctx.fillStyle = COLORS.tide; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(tideDot.x, tideDot.y, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    }
-    if (tempDot) {
-      ctx.fillStyle = tempDot.c >= 0 ? COLORS.warm : COLORS.cold;
-      ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(tempDot.x, tempDot.y, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    }
 
     this.canvas.setAttribute('aria-valuetext', clock(m.viewT));
   }
