@@ -194,7 +194,22 @@ export class Cameras {
         if (item) { item.inView = e.isIntersecting; this.#sync(item); }
       }
     });
+    // Streams: kept running while the user is active (mouse, keys, touch, scroll) even when
+    // scrolled out of view, so they're already live when scrolled to.
+    this.lastActivity = Date.now();
+    this.hiddenSince = document.hidden ? Date.now() : null;
+    let lastSync = 0;
+    const onActivity = () => {
+      this.lastActivity = Date.now();
+      if (this.lastActivity - lastSync > 1000) { lastSync = this.lastActivity; for (const it of this.items) this.#sync(it); }
+    };
+    for (const ev of ['pointermove', 'pointerdown', 'wheel', 'keydown', 'touchstart', 'scroll']) {
+      window.addEventListener(ev, onActivity, { passive: true, capture: true });
+    }
+    setInterval(() => { for (const it of this.items) this.#sync(it); }, 5_000);
     document.addEventListener('visibilitychange', () => {
+      this.hiddenSince = document.hidden ? Date.now() : null;
+      if (!document.hidden) this.lastActivity = Date.now(); // returning to the tab counts as activity
       for (const item of this.items) this.#sync(item);
       // Coming back to the tab: check running streams haven't fallen behind.
       if (!document.hidden) for (const it of this.items) if (it.player && it.active) scheduleKeepLive(it);
@@ -202,24 +217,33 @@ export class Cameras {
   }
 
   /**
-   * Each camera/stream is "active" while visible. After IDLE_TIMEOUT out of view
-   * (scrolled away or tab hidden) it is suspended; it resumes when seen again.
+   * Streams run while on screen, and while scrolled away as long as there has been
+   * user activity within the configured time; in a hidden tab they stop after
+   * IDLE_TIMEOUT. Webcam images refresh while visible and stop IDLE_TIMEOUT after
+   * leaving view.
    */
   #sync(item) {
+    if (item.kind === 'stream') {
+      const now = Date.now();
+      const want = document.hidden
+        ? now - (this.hiddenSince ?? now) < IDLE_TIMEOUT
+        : item.inView || now - this.lastActivity < this.streamIdleMs;
+      if (want && !item.active) { item.active = true; item.resume(); }
+      else if (!want && item.active) { item.active = false; item.suspend(); }
+      return;
+    }
     const visible = item.inView && !document.hidden;
     if (visible) {
       clearTimeout(item.idleTimer); item.idleTimer = null;
       if (!item.active) { item.active = true; item.resume(); }
     } else if (item.active && !item.idleTimer) {
-      // A hidden tab always idles after a minute; out-of-view streams may be kept running longer.
-      const wait = item.kind === 'stream' && !document.hidden ? this.streamIdleMs : IDLE_TIMEOUT;
-      item.idleTimer = setTimeout(() => { item.idleTimer = null; item.active = false; item.suspend(); }, wait);
+      item.idleTimer = setTimeout(() => { item.idleTimer = null; item.active = false; item.suspend(); }, IDLE_TIMEOUT);
     }
   }
 
   /** Only rebuilds when the camera config actually changed, so streams keep playing. */
-  update({ images, streams, showCameras, showStreams, streamIdleMinutes = 1 }) {
-    this.streamIdleMs = Math.max(1, streamIdleMinutes) * 60_000; // takes effect next time a stream leaves view
+  update({ images, streams, showCameras, showStreams, streamIdleMinutes = 5 }) {
+    this.streamIdleMs = Math.max(1, streamIdleMinutes) * 60_000;
     const key = JSON.stringify([images, streams, showCameras, showStreams, t('cameras')]);
     if (key === this.key) return;
     this.key = key;
