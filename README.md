@@ -18,22 +18,19 @@ To run it locally you need a static server, because ES modules don't load from `
 python3 -m http.server 8000   # then open http://localhost:8000
 ```
 
-## Shared config and local overrides
+## Settings and config files
 
-`config.json` is the shared default for every machine. It holds the location, units, language, card layout, graph overlays, snowfall window, cameras and debug flags.
+The repo contains no location, cameras or streams. On a browser's first visit the settings dialog opens automatically: search for a place (or use *Use my location*), or **Import config file…**.
 
-Any change made in **Settings (⚙)** is stored as a local override in that browser only. Settings marks overridden items as **local**, with a ↺ button to reset each one. The *Shared config* section lists all overrides and has these actions:
+Everything is saved in that browser (localStorage). To set up another machine, use **Export config file** in settings, then **Import config file…** on the other machine. Export/import covers the location, units, language, card layout, graph overlays, snowfall window, cameras, streams and debug flags.
 
-- **Reset all to shared** drops every local change.
-- **Download as config.json** exports this browser's effective setup. Commit that file to make it the new shared default.
-
-Open tabs pick up a changed `config.json` within about 30 minutes, or straight away on reload.
+*Optional:* a `config.json` placed next to `index.html` on the server is used as defaults for every browser (with per-browser overrides marked **local**). It is git-ignored here so personal settings aren't published by accident.
 
 ### Streams
 
-Add YouTube streams under `cameras.streams` as `{ "name": "…", "youtube": "<video ID | channel ID (UC…) | URL>" }`. A channel ID always shows that channel's current live stream. Streams autoplay muted, because browsers block autoplay with sound.
+Add YouTube streams in settings: a video ID, a channel ID (UC…) or a URL. A channel ID always shows that channel's current live stream. Streams autoplay muted, because browsers block autoplay with sound.
 
-Prefer channel IDs: a video ID stops working when the channel restarts its stream, and an ended stream plays as a recording from wherever YouTube resumes it. The dashboard keeps live streams at the live edge: it jumps to live when playback starts or the tab regains focus, and if a stream falls more than 90 s behind.
+Prefer channel IDs: a video ID stops working when the channel restarts its stream. A stream that falls more than 90 s behind live (e.g. after being paused) is moved back to ~30 s behind live. Webcams and streams pause after a minute out of view and resume when scrolled back into view.
 
 ## Data sources (all keyless, browser-direct)
 
@@ -44,7 +41,7 @@ Prefer channel IDs: a video ID stops working when the channel restarts its strea
 | Next two hours | MET Norway Nowcast (radar, Nordic only), falling back to Open-Meteo 15-minutely |
 | Kp, 3-hourly observed + 3-day forecast | NOAA SWPC |
 | Kp, beyond 3 days (daily max, shown fainter) | NOAA SWPC 27-day outlook |
-| Sun position, phases, sunrise/sunset | Computed locally |
+| Sun and moon position, phases, rise/set | Computed locally |
 | Place search | Open-Meteo geocoding |
 
 **Firefox gotcha:** never add custom headers (e.g. `User-Agent`) to api.met.no requests. Firefox would then send a CORS preflight, which MET answers without CORS headers, so the request gets blocked. Use a plain `fetch(url)`. See `js/data/fetchers.js`.

@@ -1,24 +1,26 @@
-// Shared config (config.json in the repo) + per-browser overrides (localStorage).
-// Objects merge deeply; arrays and scalars are replaced whole.
+// Optional shared config (config.json next to index.html — not in the repo by
+// default) + per-browser overrides (localStorage). Objects merge deeply; arrays
+// and scalars are replaced whole. The built-in defaults hold no location or
+// cameras: a fresh browser starts with the settings dialog open.
 
 const LS_KEY = 'solar-dashboard.overrides.v1';
 
 export const BUILTIN_DEFAULTS = {
-  location: { name: 'Oslo', lat: 59.91, lon: 10.75, timezone: 'Europe/Oslo' },
+  location: null,
   units: 'metric',
   language: 'en',
   layout: {
-    cards: ['sun', 'weather', 'wind', 'outlook', 'aurora', 'snow'].map((id) => ({ id, visible: true })),
+    cards: ['sun', 'moon', 'weather', 'wind', 'outlook', 'aurora', 'snow'].map((id) => ({ id, visible: true })),
     showCameras: true,
     showStreams: true,
   },
-  overlays: { sunCurve: true, temperature: true, clouds: true, precipitation: true, kp: true },
+  overlays: { sunCurve: true, moon: true, temperature: true, clouds: true, precipitation: true, kp: true },
   snowWindowHours: 12,
   cameras: { images: [], streams: [] },
   debug: { showSources: false, mock: false },
 };
 
-export const ALL_CARDS = ['sun', 'weather', 'wind', 'outlook', 'aurora', 'snow', 'sources'];
+export const ALL_CARDS = ['sun', 'moon', 'weather', 'wind', 'outlook', 'aurora', 'snow', 'sources'];
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));
@@ -64,13 +66,25 @@ function leafPaths(obj, prefix = '') {
   return out;
 }
 
-/** Ensure the layout contains every known card exactly once (new cards appended hidden). */
+/**
+ * Ensure the layout contains every known card exactly once. Cards added in a
+ * newer version are inserted after their predecessor and shown (except the
+ * debug-only Data sources card).
+ */
 function normaliseLayout(cfg) {
   const seen = new Set();
   const cards = (cfg.layout?.cards || []).filter((c) => ALL_CARDS.includes(c.id) && !seen.has(c.id) && seen.add(c.id));
-  for (const id of ALL_CARDS) if (!seen.has(id)) cards.push({ id, visible: false });
+  ALL_CARDS.forEach((id, i) => {
+    if (seen.has(id)) return;
+    const after = cards.findIndex((c) => c.id === ALL_CARDS[i - 1]);
+    cards.splice(after + 1, 0, { id, visible: id !== 'sources' });
+  });
   cfg.layout.cards = cards;
   return cfg;
+}
+
+export function hasLocation(loc) {
+  return !!loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon);
 }
 
 export class Config {
@@ -98,8 +112,10 @@ export class Config {
   async loadShared() {
     try {
       const res = await fetch('config.json', { cache: 'no-cache' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
+      // No shared config deployed is normal: everything comes from this browser.
+      const json = res.status === 404 ? {} : res.ok ? await res.json() : null;
+      if (!json) throw new Error(`HTTP ${res.status}`);
+      this.sharedPresent = res.ok;
       const next = normaliseLayout(deepMerge(BUILTIN_DEFAULTS, json));
       const changed = !deepEqual(next, this.shared);
       this.shared = next;
@@ -133,6 +149,20 @@ export class Config {
 
   isOverridden(path) {
     return this.overriddenPaths().some((p) => p === path || p.startsWith(path + '.') || path.startsWith(p + '.'));
+  }
+
+  get hasLocation() { return hasLocation(this.effective.location); }
+
+  /** Replace this browser's settings with an exported config file. */
+  importJson(text) {
+    const obj = JSON.parse(text);
+    if (!isObj(obj)) throw new Error('Not a config object');
+    const known = Object.keys(BUILTIN_DEFAULTS);
+    const clean = Object.fromEntries(Object.entries(obj).filter(([k]) => known.includes(k)));
+    if (!Object.keys(clean).length) throw new Error('No recognised settings in file');
+    if (clean.location && !hasLocation(clean.location)) throw new Error('Location needs numeric lat and lon');
+    this.overrides = clean;
+    this.#save();
   }
 
   /** The effective config, formatted as a drop-in replacement for config.json. */

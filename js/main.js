@@ -9,6 +9,8 @@ import { renderCards, SNOW_WINDOWS } from './cards.js';
 import { Cameras } from './cameras.js';
 import { Settings } from './settings.js';
 import { sunDay } from './sun.js';
+import { moonDay } from './moon.js';
+import { snowFraction } from './data/store.js';
 import { dayRange, browserTimeZone, isValidTimeZone, MIN, DAY } from './time.js';
 
 const MIN_DAY = -2;
@@ -27,6 +29,7 @@ const state = { dayOffset: 0, scrubT: null, now: clockNow() };
 let renderQueued = false;
 let storeKey = null;
 let sunCache = { key: null, value: null };
+let moonCache = { key: null, value: null };
 
 const store = new DataStore(() => queueRender());
 const graphic = new DayGraphic($('#graphic'), { onScrub: (tt) => { state.scrubT = tt; queueRender(); } });
@@ -37,12 +40,13 @@ function cfg() { return config.effective; }
 function mockMode() { return params.get('mock') === '1' || !!cfg().debug.mock; }
 
 function timeZone() {
-  const z = cfg().location.timezone;
+  const z = cfg().location?.timezone;
   if (z && isValidTimeZone(z)) return z;
   return store.timezone || browserTimeZone();
 }
 
 function ensureStore() {
+  if (!config.hasLocation) { if (storeKey) { store.stop(); storeKey = null; } return; }
   const { lat, lon } = cfg().location;
   const key = JSON.stringify([lat, lon, mockMode()]);
   if (key === storeKey) return;
@@ -62,6 +66,8 @@ function render() {
   f.setUnits(c.units);
   const tz = timeZone();
   f.setTimeZone(tz);
+  document.body.classList.toggle('no-location', !config.hasLocation);
+  if (!config.hasLocation) { renderEmpty(); return; }
   const { lat, lon } = c.location;
   const now = state.now = clockNow();
 
@@ -70,6 +76,8 @@ function render() {
   const sKey = `${start}|${end}|${lat}|${lon}`;
   if (sunCache.key !== sKey) sunCache = { key: sKey, value: sunDay(start, end, lat, lon) };
   const sun = sunCache.value;
+  if (moonCache.key !== sKey) moonCache = { key: sKey, value: moonDay(start, end, lat, lon) };
+  const moon = moonCache.value;
 
   const scrubbing = state.scrubT != null;
   let viewT = scrubbing ? state.scrubT : start + (now - todayStart);
@@ -80,6 +88,7 @@ function render() {
   document.title = `${c.location.name} — ${f.clock(viewT)}`;
   $('#place').textContent = c.location.name;
   $('#date').textContent = f.longDate(start + DAY / 2);
+  $('#prev').hidden = $('#next').hidden = false;
   $('#prev').disabled = state.dayOffset <= MIN_DAY;
   $('#next').disabled = state.dayOffset >= MAX_DAY;
   $('#prev').title = t('prevDay');
@@ -94,11 +103,11 @@ function render() {
   $('#mock-banner').hidden = !mockMode();
   $('#mock-banner').textContent = t('mockBanner');
 
-  graphic.render({ start, end, sun, store, viewT, nowT: now, scrubbing, overlays: c.overlays, tz });
+  graphic.render({ start, end, sun, moon, lat, lon, store, viewT, nowT: now, scrubbing, overlays: c.overlays, tz });
 
   // Overlay legend / toggles.
   const legend = $('#legend');
-  const legendHtml = ['sunCurve', 'temperature', 'clouds', 'precipitation', 'kp'].map((k) =>
+  const legendHtml = ['sunCurve', 'moon', 'temperature', 'clouds', 'precipitation', 'kp'].map((k) =>
     `<button type="button" class="chip chip-${k} ${c.overlays[k] ? 'on' : ''}" data-overlay="${k}" aria-pressed="${!!c.overlays[k]}">${t(`ov_${k}`)}</button>`).join('');
   if (legend._html !== legendHtml) { legend.innerHTML = legendHtml; legend._html = legendHtml; legend.setAttribute('aria-label', t('s_overlayLegend')); }
 
@@ -113,8 +122,12 @@ function render() {
   if (strip._html !== stripHtml) { strip.innerHTML = stripHtml; strip._html = stripHtml; strip.querySelector('.on')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }
 
   const snowWindow = SNOW_WINDOWS.includes(c.snowWindowHours) ? c.snowWindowHours : 12;
+  // Snowfall only matters if the loaded data (past days + forecast) ever gets cold enough.
+  const hidden = new Set();
+  if (!store.instants.some((i) => snowFraction(i.temp) > 0)) hidden.add('snow');
+
   renderCards($('#cards'), {
-    store, sun, viewT, nowT: now, lat, lon, scrubbing, isToday, snowWindow,
+    hidden, store, sun, moon, viewT, nowT: now, lat, lon, scrubbing, isToday, snowWindow,
     units: c.units, showSources: c.debug.showSources,
   }, c.layout.cards);
 
@@ -129,6 +142,23 @@ function render() {
     last ? `<span>${t('updated')} ${f.clock(last)}</span>` : '',
     ...failed.map(([n, s]) => `<span class="warn" title="${esc(s.error)}">${t(`src_${n}`)}: ${t('failed')}</span>`),
   ].filter(Boolean).join(' · ');
+}
+
+function renderEmpty() {
+  document.title = 'Solar Dashboard';
+  $('#place').textContent = 'Solar Dashboard';
+  $('#date').textContent = '';
+  $('#view-time').textContent = f.clock(clockNow());
+  $('#view-rel').textContent = '';
+  for (const id of ['#prev', '#next', '#today']) $(id).hidden = true;
+  $('#mock-banner').hidden = true;
+  $('#days').innerHTML = ''; $('#days')._html = '';
+  $('#legend').innerHTML = ''; $('#legend')._html = '';
+  $('#cards').innerHTML = `<section class="card welcome"><h2>${t('settings')}</h2>
+    <p>${t('welcome')}</p><button type="button" data-action="open-settings">${t('s_chooseLocation')}</button></section>`;
+  $('#cards')._html = '';
+  $('#status').innerHTML = '';
+  cameras.update({ images: [], streams: [], showCameras: false, showStreams: false });
 }
 
 // ── Events ────────────────────────────────────────────────────────────────
@@ -147,6 +177,7 @@ $('#legend').addEventListener('click', (e) => {
   if (b) config.set(`overlays.${b.dataset.overlay}`, !cfg().overlays[b.dataset.overlay]);
 });
 $('#cards').addEventListener('click', (e) => {
+  if (e.target.closest('[data-action=open-settings]')) { settings.open(); return; }
   const b = e.target.closest('[data-action=snow-window]');
   if (b) config.set('snowWindowHours', Number(b.dataset.value));
 });
@@ -174,4 +205,6 @@ setInterval(() => config.loadShared(), 30 * MIN);
   await config.loadShared();
   ensureStore();
   render();
+  // First visit (no shared config, nothing saved here): go straight to settings.
+  if (!config.hasLocation) settings.open();
 })();

@@ -116,6 +116,15 @@ p.sub { margin: 6px 0 0; }
 .wind-arrow { width: 40px; height: 40px; fill: var(--text); transition: transform .3s; flex: none; }
 .sun-arrow { fill: var(--sun); filter: drop-shadow(0 0 4px rgba(255,170,0,.5)); }
 .sun-arrow.below { fill: #8a7a55; filter: none; }
+.moon-arrow { fill: #dde4f5; }
+.moon-arrow.below { fill: #5d6478; }
+.moon-icon { width: 30px; height: 30px; margin-left: auto; flex: none; }
+.moon-dark { fill: #2a2f40; stroke: #4a5068; stroke-width: 1; }
+.moon-lit { fill: #eef1f8; }
+.chip-moon.on::before { background: #dde4f5; border-radius: 50%; }
+.welcome p { color: var(--muted); }
+body.no-location .graphic, body.no-location .legend, body.no-location .days { display: none; }
+.welcome-note { background: #16273f; border: 1px solid #2b4a75; border-radius: 8px; padding: 10px 12px; display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
 
 .outlook-text { font-size: 19px; }
 .spark { display: flex; align-items: flex-end; gap: 1px; height: 44px; margin-top: 8px; border-bottom: 1px solid var(--line); }

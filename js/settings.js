@@ -33,7 +33,8 @@ export class Settings {
   refresh() { if (this.isOpen) this.#build(); }
 
   marker(path) {
-    if (!this.config.isOverridden(path)) return '<span class="marker" data-for="' + esc(path) + '"></span>';
+    // "local" only means something when a shared config.json is deployed.
+    if (!this.config.sharedPresent || !this.config.isOverridden(path)) return '<span class="marker" data-for="' + esc(path) + '"></span>';
     return `<span class="marker on" data-for="${esc(path)}"><span class="pill">${esc(t('s_local'))}</span>`
       + `<button type="button" class="link" data-act="reset" data-path="${esc(path)}" title="${esc(t('s_reset'))}">↺</button></span>`;
   }
@@ -46,12 +47,15 @@ export class Settings {
 
   #build() {
     const c = this.config.effective;
+    const loc = c.location || {};
     const scrollTop = this.dlg.querySelector('.settings-body')?.scrollTop ?? 0;
     const check = (path, label) => `<label class="check"><input type="checkbox" data-bind="${path}" ${getPath(c, path) ? 'checked' : ''}> ${esc(label)} ${this.marker(path)}</label>`;
     this.dlg.innerHTML = `
       <form method="dialog" class="settings">
         <header><h2>${esc(t('settings'))}</h2><button class="icon" value="close" aria-label="${esc(t('s_close'))}">✕</button></header>
         <div class="settings-body">
+          ${!this.config.hasLocation ? `<p class="welcome-note">${esc(t('s_welcome'))}
+            <button type="button" data-act="import">${esc(t('s_import'))}</button></p>` : ''}
           ${this.config.sharedError ? `<p class="warn">${esc(t('s_sharedError'))} (${esc(this.config.sharedError)})</p>` : ''}
           <fieldset><legend>${esc(t('s_location'))} ${this.marker('location')}</legend>
             <div class="search">
@@ -60,10 +64,10 @@ export class Settings {
             </div>
             <ul class="results" data-results></ul>
             <div class="grid4">
-              <label>${esc(t('s_name'))}<input data-loc="name" value="${esc(c.location.name)}"></label>
-              <label>${esc(t('s_lat'))}<input data-loc="lat" inputmode="decimal" value="${esc(c.location.lat)}"></label>
-              <label>${esc(t('s_lon'))}<input data-loc="lon" inputmode="decimal" value="${esc(c.location.lon)}"></label>
-              <label>${esc(t('s_tz'))}<input data-loc="timezone" value="${esc(c.location.timezone)}" placeholder="Europe/Oslo"></label>
+              <label>${esc(t('s_name'))}<input data-loc="name" value="${esc(loc.name)}"></label>
+              <label>${esc(t('s_lat'))}<input data-loc="lat" inputmode="decimal" value="${esc(loc.lat)}"></label>
+              <label>${esc(t('s_lon'))}<input data-loc="lon" inputmode="decimal" value="${esc(loc.lon)}"></label>
+              <label>${esc(t('s_tz'))}<input data-loc="timezone" value="${esc(loc.timezone)}" placeholder="Europe/Oslo"></label>
             </div>
           </fieldset>
 
@@ -83,7 +87,7 @@ export class Settings {
           </fieldset>
 
           <fieldset><legend>${esc(t('s_layout'))} ${this.marker('layout.cards')}</legend>
-            <p class="hint">${esc(t('s_layoutHint'))}</p>
+            <p class="hint">${esc(t('s_layoutHint'))} ${esc(t('s_snowHint'))}</p>
             <ol class="card-list">
               ${c.layout.cards.map((card, i, arr) => `
                 <li>
@@ -101,7 +105,7 @@ export class Settings {
           </fieldset>
 
           <fieldset><legend>${esc(t('s_overlays'))}</legend>
-            ${['sunCurve', 'temperature', 'clouds', 'precipitation', 'kp'].map((k) => check(`overlays.${k}`, t(`ov_${k}`))).join('')}
+            ${['sunCurve', 'moon', 'temperature', 'clouds', 'precipitation', 'kp'].map((k) => check(`overlays.${k}`, t(`ov_${k}`))).join('')}
           </fieldset>
 
           <fieldset><legend>${esc(t('s_cameras'))}</legend>
@@ -148,6 +152,7 @@ export class Settings {
         <button type="button" data-act="reset-all">${esc(t('s_resetAll'))}</button>`
         : `<p class="hint">${esc(t('s_noOverrides'))}</p>`}
       <div class="export">
+        <button type="button" data-act="import">${esc(t('s_import'))}</button>
         <button type="button" data-act="export">${esc(t('s_export'))}</button>
         <button type="button" data-act="copy">${esc(t('s_copy'))}</button>
       </div>
@@ -171,7 +176,7 @@ export class Settings {
       cfg.set('layout.cards', cards);
       this.#build();
     } else if (el.dataset.loc) {
-      const loc = { ...cfg.get('location') };
+      const loc = { ...(cfg.get('location') || {}) };
       const k = el.dataset.loc;
       if (k === 'lat' || k === 'lon') {
         const n = parseFloat(String(el.value).replace(',', '.'));
@@ -182,6 +187,7 @@ export class Settings {
         if (el.value && !isValidTimeZone(el.value)) { el.setCustomValidity('Unknown time zone'); el.reportValidity(); return; }
         loc.timezone = el.value || undefined;
       } else loc[k] = el.value;
+      if (!loc.name && Number.isFinite(loc.lat) && Number.isFinite(loc.lon)) loc.name = `${loc.lat}, ${loc.lon}`;
       el.setCustomValidity('');
       cfg.set('location', loc);
       this.#refreshMarkers();
@@ -219,11 +225,20 @@ export class Settings {
       list.splice(+btn.dataset.i, 1);
       cfg.set(`cameras.${btn.dataset.list}`, list);
       this.#build();
+    } else if (act === 'import') {
+      const input = Object.assign(document.createElement('input'), { type: 'file', accept: '.json,application/json' });
+      input.addEventListener('change', async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        try { cfg.importJson(await file.text()); this.#build(); }
+        catch (err) { alert(`${t('s_importError')}: ${err.message}`); }
+      });
+      input.click();
     } else if (act === 'export') {
       const blob = new Blob([cfg.exportJson()], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = 'config.json';
+      a.download = 'solar-dashboard-config.json';
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     } else if (act === 'copy') {

@@ -51,7 +51,9 @@ export class DataStore {
     this.jobs = {
       met: () => fetchMet(lat, lon, this.abort.signal),
       openmeteo: () => fetchOpenMeteo(lat, lon, this.abort.signal),
-      nowcast: () => fetchNowcast(lat, lon, this.abort.signal),
+      // MET's radar nowcast only covers the Nordics; elsewhere it fails without CORS
+      // headers, so don't ask (Open-Meteo's 15-minutely data is used instead).
+      ...(lat > 52.5 && lat < 75 && lon > -15 && lon < 37 ? { nowcast: () => fetchNowcast(lat, lon, this.abort.signal) } : {}),
       kp: () => fetchKp(this.abort.signal),
       kp27: () => fetchKp27(this.abort.signal),
     };

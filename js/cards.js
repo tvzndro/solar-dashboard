@@ -4,6 +4,7 @@ import { t } from './i18n.js';
 import * as f from './format.js';
 import { HOUR, MIN } from './time.js';
 import { elevationAt, phaseOf, sunPosition } from './sun.js';
+import { moonPosition, moonIllumination, phaseKey, litPath } from './moon.js';
 import { beaufort, feelsLike, precipType, intensity, shortTermOutlook, kpNeeded, auroraChance } from './weather.js';
 
 export const SNOW_WINDOWS = [3, 6, 12, 24, 48];
@@ -55,6 +56,37 @@ function sunCard(ctx) {
     ${times}
     ${row(t('dayLength'), v(f.duration(sun.dayLength), 'sun'))}
     <p class="sub">${esc(t('highestAt', f.deg(sun.maxElev, 1), f.clock(sun.noon)))}</p>`;
+}
+
+function moonCard(ctx) {
+  const v = makeV(ctx);
+  const { moon, viewT, lat, lon } = ctx;
+  const pos = moonPosition(viewT, lat, lon);
+  const ill = moonIllumination(viewT);
+  const rising = moonPosition(viewT + 5 * MIN, lat, lon).elevation > pos.elevation;
+  const r = 15;
+  let times;
+  if (moon.always === 'up') times = `<p class="note">${esc(t('moonAlwaysUp'))}</p>`;
+  else if (moon.always === 'down') times = `<p class="note">${esc(t('moonAlwaysDown'))}</p>`;
+  else {
+    times = row(t('moonrise'), moon.rise ? v(f.clock(moon.rise), 'sun') : '—')
+      + row(t('moonset'), moon.set ? v(f.clock(moon.set), 'sun') : '—');
+  }
+  return `
+    <div class="wind-head">
+      <svg class="wind-arrow moon-arrow ${pos.elevation < 0 ? 'below' : ''}" viewBox="-12 -12 24 24" style="transform: rotate(${pos.azimuth}deg)" aria-hidden="true">
+        <path d="M0 -10 L6 6 L0 2 L-6 6 Z" />
+      </svg>
+      <div class="big">${esc(t(`moon_${phaseKey(ill.phase)}`))}</div>
+      <svg class="moon-icon" viewBox="${-r - 1} ${-r - 1} ${2 * r + 2} ${2 * r + 2}" aria-hidden="true">
+        <circle r="${r}" class="moon-dark" />
+        <path d="${litPath(r, ill, lat < 0)}" class="moon-lit" />
+      </svg>
+    </div>
+    ${row(t('illumination'), v(f.pct(ill.fraction * 100), 'sun'))}
+    ${row(t('elevation'), v(f.deg(pos.elevation, 1), 'sun') + ` <span class="trend">${rising ? '↗' : '↘'}</span>`)}
+    ${row(t('direction'), v(`${f.deg(pos.azimuth)} ${f.compass(pos.azimuth)}`, 'sun'))}
+    ${times}`;
 }
 
 function weatherCard(ctx) {
@@ -190,12 +222,12 @@ function sourcesCard(ctx) {
 }
 
 export const CARDS = {
-  sun: sunCard, weather: weatherCard, wind: windCard, outlook: outlookCard,
+  sun: sunCard, moon: moonCard, weather: weatherCard, wind: windCard, outlook: outlookCard,
   aurora: auroraCard, snow: snowCard, sources: sourcesCard,
 };
 
 export function renderCards(container, ctx, layout) {
-  const ids = layout.filter((c) => c.visible).map((c) => c.id);
+  const ids = layout.filter((c) => c.visible && !ctx.hidden?.has(c.id)).map((c) => c.id);
   const html = ids.map((id) => {
     let body;
     try { body = CARDS[id](ctx); } catch (err) { console.error(err); body = `<p class="empty">${esc(String(err))}</p>`; }

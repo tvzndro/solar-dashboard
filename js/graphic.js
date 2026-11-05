@@ -4,6 +4,7 @@
 
 import { zonedParts, zonedToUtc, MIN, HOUR } from './time.js';
 import { elevationAt } from './sun.js';
+import { moonPosition, moonIllumination, litPath } from './moon.js';
 import { clock, temp as fmtTemp, tempShort } from './format.js';
 
 const COLORS = {
@@ -20,6 +21,9 @@ const COLORS = {
   frame: 'rgba(255,255,255,0.16)',
   horizon: 'rgba(255,255,255,0.32)',
   curve: 'rgba(255,255,255,0.5)',
+  moonCurve: 'rgba(205,220,255,0.38)',
+  moonLit: '#eef1f8',
+  moonDark: 'rgba(28,32,48,0.92)',
   label: '#8a8a8a',
   warm: '#ff9a5c',
   cold: '#8fdcff',
@@ -175,6 +179,15 @@ export class DayGraphic {
       ctx.stroke();
     }
 
+    // Moon path: fainter and dashed so the sun's curve stays the main line.
+    if (overlays.moon && m.moon) {
+      ctx.strokeStyle = COLORS.moonCurve; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      m.moon.samples.forEach((s, i) => (i ? ctx.lineTo(xOf(s.t), yOf(s.elev)) : ctx.moveTo(xOf(s.t), yOf(s.elev))));
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
     // Temperature: the horizon doubles as 0 °C (freezing), warm above, cold below.
     let tempDot = null;
     if (overlays.temperature && store.instants.length) {
@@ -287,6 +300,26 @@ export class DayGraphic {
       ctx.fillStyle = tempDot.c >= 0 ? COLORS.warm : COLORS.cold;
       ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(tempDot.x, tempDot.y, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+
+    // The moon disc with its current phase; pinned to the edge like the sun, dimmed below the horizon.
+    if (overlays.moon && m.moon) {
+      const mr = Math.max(7, Math.min(10, plotH / 20));
+      const mp = moonPosition(m.viewT, m.lat, m.lon);
+      const mx = Math.min(R - mr * 0.4, Math.max(L + mr * 0.4, xOf(m.viewT)));
+      const my = Math.min(B - mr, Math.max(T + mr, yOf(mp.elevation)));
+      ctx.save();
+      ctx.translate(mx, my);
+      ctx.globalAlpha = mp.elevation < 0 ? 0.45 : 1;
+      ctx.fillStyle = COLORS.moonDark;
+      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = 'rgba(200,220,255,0.7)'; ctx.shadowBlur = mr * 1.2;
+      ctx.fillStyle = COLORS.moonLit;
+      ctx.fill(new Path2D(litPath(mr, moonIllumination(m.viewT), m.lat < 0)));
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(220,230,255,0.35)'; ctx.lineWidth = 0.75;
+      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
     }
 
     // The sun disc, pinned to the edge when far below (or above) the frame.
