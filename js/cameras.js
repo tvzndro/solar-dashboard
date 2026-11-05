@@ -52,16 +52,39 @@ function bust(url) {
   return url + (url.includes('?') ? '&' : '?') + '_ts=' + Math.floor(Date.now() / 1000);
 }
 
+const IDLE_TIMEOUT = 60_000; // pause a camera/stream after this long out of view
+
 export class Cameras {
   constructor(container) {
     this.el = container;
     this.key = null;
     this.timers = [];
-    this.players = [];
-    // Coming back to the tab: snap streams back to live.
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) for (const p of this.players) goLive(p, LIVE_LAG_START);
+    this.items = [];
+    this.observer = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        const item = this.items.find((it) => it.el === e.target);
+        if (item) { item.inView = e.isIntersecting; this.#sync(item); }
+      }
     });
+    document.addEventListener('visibilitychange', () => {
+      for (const item of this.items) this.#sync(item);
+      // Coming back to the tab: snap running streams back to live.
+      if (!document.hidden) for (const it of this.items) if (it.player && it.active) goLive(it.player, LIVE_LAG_START);
+    });
+  }
+
+  /**
+   * Each camera/stream is "active" while visible. After IDLE_TIMEOUT out of view
+   * (scrolled away or tab hidden) it is suspended; it resumes when seen again.
+   */
+  #sync(item) {
+    const visible = item.inView && !document.hidden;
+    if (visible) {
+      clearTimeout(item.idleTimer); item.idleTimer = null;
+      if (!item.active) { item.active = true; item.resume(); }
+    } else if (item.active && !item.idleTimer) {
+      item.idleTimer = setTimeout(() => { item.idleTimer = null; item.active = false; item.suspend(); }, IDLE_TIMEOUT);
+    }
   }
 
   /** Only rebuilds when the camera config actually changed, so streams keep playing. */
@@ -71,8 +94,12 @@ export class Cameras {
     this.key = key;
     for (const tm of this.timers) clearInterval(tm);
     this.timers = [];
-    for (const p of this.players || []) { try { p.destroy(); } catch { /* ignore */ } }
-    this.players = [];
+    for (const it of this.items) {
+      clearTimeout(it.idleTimer); it.suspend();
+      try { it.player?.destroy(); } catch { /* ignore */ }
+    }
+    this.items = [];
+    this.observer.disconnect();
 
     const parts = [];
     const imgs = showCameras ? images.filter((c) => c.url) : [];
@@ -96,42 +123,68 @@ export class Cameras {
     this.el.innerHTML = parts.join('');
     this.el.hidden = !parts.length;
 
-    const frames = [...this.el.querySelectorAll('.stream iframe')];
-    if (frames.length) this.#attachPlayers(frames, key);
+    // Streams: pause when idle, play again (at the live edge) when seen.
+    for (const fig of this.el.querySelectorAll('.stream')) {
+      const item = {
+        el: fig, inView: false, active: true, player: null,
+        suspend: () => { try { item.player?.pauseVideo(); } catch { /* not ready */ } },
+        resume: () => { try { item.player?.playVideo(); } catch { /* not ready */ } },
+      };
+      this.items.push(item);
+    }
+    const streamItems = this.items.slice();
+    if (streamItems.length) this.#attachPlayers(streamItems, key);
 
+    // Webcam images: refresh periodically while active.
     this.el.querySelectorAll('.cam').forEach((fig) => {
       const cam = imgs[+fig.dataset.i];
       const img = fig.querySelector('img');
       const err = fig.querySelector('.cam-error');
+      const every = Math.max(10, cam.refreshSeconds || 60) * 1000;
+      let lastLoad = 0;
       // Load into a detached image first so a failed refresh keeps the last good frame.
       const load = () => {
+        lastLoad = Date.now();
         const probe = new Image();
         probe.onload = () => { img.src = probe.src; err.hidden = true; fig.classList.remove('failed'); };
         probe.onerror = () => { if (!img.src) { err.hidden = false; fig.classList.add('failed'); } };
         probe.src = bust(cam.url);
       };
+      const item = {
+        el: fig, inView: false, active: true, interval: null,
+        suspend: () => { clearInterval(item.interval); item.interval = null; },
+        resume: () => {
+          if (Date.now() - lastLoad >= every) load();
+          clearInterval(item.interval);
+          item.interval = setInterval(load, every);
+        },
+      };
       load();
-      this.timers.push(setInterval(() => { if (!document.hidden) load(); }, Math.max(10, cam.refreshSeconds || 60) * 1000));
+      item.resume();
+      this.items.push(item);
       fig.addEventListener('click', () => fig.classList.toggle('wide'));
     });
+
+    // Everything starts active; anything not seen within IDLE_TIMEOUT gets suspended.
+    for (const item of this.items) { this.observer.observe(item.el); this.#sync(item); }
   }
 
-  async #attachPlayers(frames, key) {
+  async #attachPlayers(items, key) {
     const YT = await loadYouTubeApi();
     if (key !== this.key) return; // config changed meanwhile
-    for (const iframe of frames) {
-      const player = new YT.Player(iframe, {
+    for (const item of items) {
+      item.player = new YT.Player(item.el.querySelector('iframe'), {
         events: {
+          onReady: (e) => { if (!item.active) e.target.pauseVideo(); },
           onStateChange: (e) => { if (e.data === YT.PlayerState.PLAYING) goLive(e.target, LIVE_LAG_START); },
         },
       });
-      this.players.push(player);
     }
-    // Catch drift (stalls, sleeping laptop, background tab) and re-sync.
+    // Catch drift (stalls, sleeping laptop) and re-sync running streams.
     this.timers.push(setInterval(() => {
       if (document.hidden) return;
-      for (const p of this.players) {
-        try { if (p.getPlayerState?.() === YT.PlayerState.PLAYING) goLive(p, LIVE_LAG_DRIFT); } catch { /* not ready */ }
+      for (const it of items) {
+        try { if (it.active && it.player?.getPlayerState?.() === YT.PlayerState.PLAYING) goLive(it.player, LIVE_LAG_DRIFT); } catch { /* not ready */ }
       }
     }, 60_000));
   }

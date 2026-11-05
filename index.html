@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+  <div class="dash">
   <div id="mock-banner" class="banner" hidden></div>
   <header class="top">
     <div class="where">
@@ -32,10 +33,12 @@
     <div id="graphic" class="graphic"></div>
     <div id="legend" class="legend" role="group"></div>
     <div id="cards" class="cards"></div>
-    <div id="cameras" class="cameras" hidden></div>
   </main>
-
   <footer id="status" class="status"></footer>
+  </div>
+
+  <!-- Below the fold: the dashboard above fills the screen. -->
+  <section id="cameras" class="cameras" hidden></section>
 
   <dialog id="settings"></dialog>
 

@@ -75,7 +75,7 @@ function normaliseLayout(cfg) {
 
 export class Config {
   constructor() {
-    this.shared = clone(BUILTIN_DEFAULTS);
+    this.shared = normaliseLayout(clone(BUILTIN_DEFAULTS));
     this.sharedLoaded = false;
     this.sharedError = null;
     this.overrides = this.#readOverrides();
@@ -100,7 +100,7 @@ export class Config {
       const res = await fetch('config.json', { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      const next = deepMerge(BUILTIN_DEFAULTS, json);
+      const next = normaliseLayout(deepMerge(BUILTIN_DEFAULTS, json));
       const changed = !deepEqual(next, this.shared);
       this.shared = next;
       this.sharedLoaded = true;

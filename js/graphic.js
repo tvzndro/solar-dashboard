@@ -189,7 +189,7 @@ export class DayGraphic {
       const stroke = (color, clipTop, clipH) => {
         ctx.save();
         ctx.beginPath(); ctx.rect(L, clipTop, pw, clipH); ctx.clip();
-        ctx.strokeStyle = color; ctx.lineWidth = 1.75; ctx.lineJoin = 'round';
+        ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.lineJoin = 'round';
         ctx.shadowColor = COLORS.tempShadow; ctx.shadowBlur = 3;
         drawRuns(ctx, pts, (run) => {
           ctx.beginPath();

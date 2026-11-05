@@ -44,7 +44,12 @@ function sunCard(ctx) {
       + row(t('sunset'), sun.sunset ? v(f.clock(sun.sunset), 'sun') : esc(t('noSunset')));
   }
   return `
-    <div class="big">${esc(t(`phase_${phase}`))} <span class="trend">${rising ? '↗' : '↘'} ${esc(t(rising ? 'rising' : 'setting'))}</span></div>
+    <div class="wind-head">
+      <svg class="wind-arrow sun-arrow ${elev < 0 ? 'below' : ''}" viewBox="-12 -12 24 24" style="transform: rotate(${pos.azimuth}deg)" aria-hidden="true">
+        <path d="M0 -10 L6 6 L0 2 L-6 6 Z" />
+      </svg>
+      <div class="big">${esc(t(`phase_${phase}`))} <span class="trend">${rising ? '↗' : '↘'} ${esc(t(rising ? 'rising' : 'setting'))}</span></div>
+    </div>
     ${row(t('elevation'), v(f.deg(elev, 1), 'sun'))}
     ${row(t('direction'), v(`${f.deg(pos.azimuth)} ${f.compass(pos.azimuth)}`, 'sun'))}
     ${times}
@@ -190,7 +195,7 @@ export const CARDS = {
 };
 
 export function renderCards(container, ctx, layout) {
-  const ids = layout.filter((c) => c.visible || (c.id === 'sources' && ctx.showSources)).map((c) => c.id);
+  const ids = layout.filter((c) => c.visible).map((c) => c.id);
   const html = ids.map((id) => {
     let body;
     try { body = CARDS[id](ctx); } catch (err) { console.error(err); body = `<p class="empty">${esc(String(err))}</p>`; }

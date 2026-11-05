@@ -161,6 +161,10 @@ export class Settings {
       let v = el.type === 'checkbox' ? el.checked : el.value;
       if (el.dataset.type === 'number') v = Number(v);
       cfg.set(el.dataset.bind, v);
+      // "Show sources" also shows/hides the Data sources card; the card checkbox stays the one control for it.
+      if (el.dataset.bind === 'debug.showSources') {
+        cfg.set('layout.cards', cfg.get('layout.cards').map((c) => (c.id === 'sources' ? { ...c, visible: v } : c)));
+      }
       this.#build();
     } else if (el.dataset.card) {
       const cards = cfg.get('layout.cards').map((c) => (c.id === el.dataset.card ? { ...c, visible: el.checked } : c));
