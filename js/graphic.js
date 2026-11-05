@@ -34,6 +34,7 @@ const PRECIP_H = 40;
 const LABEL_H = 26;
 const PAD_X = 10;
 const TOUCH_HOLD = 3000;
+const SUN_MIN_ALPHA = 0.65; // sun opacity when fully covering the moon
 const LINE_W = 1.4; // thin data lines; < ~1.3 px they shimmer in thickness when nearly flat
 const LABEL_FONT = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif';
 const LABEL_FONT_SMALL = '500 11px system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif';
@@ -227,7 +228,7 @@ export class DayGraphic {
       // See-through where it covers the moon, so the moon stays visible behind it.
       if (moonDisc) {
         const d = Math.hypot(sx - moonDisc.x, sy - moonDisc.y), touch = r + moonDisc.r;
-        if (d < touch) ctx.globalAlpha = 0.3 + 0.7 * (d / touch) ** 2;
+        if (d < touch) ctx.globalAlpha = SUN_MIN_ALPHA + (1 - SUN_MIN_ALPHA) * (d / touch) ** 2;
       }
       ctx.shadowColor = 'rgba(255,170,0,0.85)';
       ctx.shadowBlur = r * 1.6;
