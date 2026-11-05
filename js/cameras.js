@@ -276,6 +276,20 @@ export class Cameras {
     this.zoomedStream = fig;
   }
 
+  /**
+   * All webcam images share one height: that of the shortest image at the tile width
+   * (the widest picture), which fills its tile exactly. Taller pictures are shown
+   * whole at that height, with bars at the sides, rather than cropped.
+   */
+  #fitCamHeights() {
+    const grid = this.el.querySelector('.cam-grid');
+    const imgs = grid ? [...grid.querySelectorAll('.media img')] : [];
+    const ratios = imgs.map((i) => +i.dataset.ratio).filter((r) => r > 0);
+    const width = imgs[0]?.parentElement.clientWidth;
+    if (!grid || !ratios.length || !width) return;
+    grid.style.setProperty('--cam-h', `${Math.round(width / Math.max(...ratios))}px`);
+  }
+
   /** Full-screen overlay for a webcam image (kept up to date while open). */
   #showLightbox(fig) {
     let box = document.querySelector('.lightbox');
@@ -378,6 +392,8 @@ export class Cameras {
         const probe = new Image();
         probe.onload = () => {
           img.src = probe.src; err.hidden = true; fig.classList.remove('failed');
+          img.dataset.ratio = probe.naturalWidth / probe.naturalHeight;
+          this.#fitCamHeights();
           fig.querySelector('.cam-time').textContent = clockNow();
           if (this.lightboxFor === fig) this.#showLightbox(fig); // keep an open overlay current
         };
@@ -399,6 +415,11 @@ export class Cameras {
       // Zoom: the image or the ⤢ button opens a full-screen overlay.
       fig.addEventListener('click', (e) => { if (e.target.closest('img, [data-zoom]') && img.src) this.#showLightbox(fig); });
     });
+
+    // Keep the shared webcam height right as the layout width changes.
+    this.camResize?.disconnect();
+    const grid = this.el.querySelector('.cam-grid');
+    if (grid) { this.camResize = new ResizeObserver(() => this.#fitCamHeights()); this.camResize.observe(grid); }
 
     // Everything starts active; anything not seen within IDLE_TIMEOUT gets suspended.
     for (const item of this.items) { this.observer.observe(item.el); this.#sync(item); }

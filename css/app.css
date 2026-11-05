@@ -164,7 +164,10 @@ figure { margin: 0; }
 .cam, .stream { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; position: relative; }
 /* Whole image at its own shape; the caption bar sits underneath, never on top. */
 .cam .media { position: relative; background: #111; }
-.cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; cursor: zoom-in; }
+/* One shared height for all webcam images (set from the widest picture, see #fitCamHeights);
+   16:9 until the first images have loaded. Whole image shown, never cropped. */
+.cam img { display: block; width: 100%; height: var(--cam-h, auto); aspect-ratio: 16 / 9; object-fit: contain; cursor: zoom-in; }
+.cam-grid[style*="--cam-h"] .cam img { aspect-ratio: auto; }
 .cam-error { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 13px; }
 figcaption { padding: 5px 10px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
 .cam figcaption, .stream figcaption { display: flex; align-items: center; gap: 8px; }
