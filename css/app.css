@@ -158,28 +158,39 @@ body.no-location .graphic, body.no-location .legend, body.no-location .days { di
 
 /* ── Cameras ────────────────────────────────────────── */
 .section-title { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 22px 0 8px; }
-.cam-grid, .stream-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); }
+.cam-grid, .stream-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); align-items: start; }
 .stream-grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); }
 figure { margin: 0; }
 .cam, .stream { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; position: relative; }
-.cam { cursor: zoom-in; }
-.cam.wide { grid-column: 1 / -1; cursor: zoom-out; }
-.cam img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #111; }
-.cam.wide img { aspect-ratio: auto; object-fit: contain; max-height: 80vh; }
-.cam-error { position: absolute; inset: 0 0 28px; display: grid; place-items: center; color: var(--dim); font-size: 13px; }
-figcaption { padding: 5px 10px; font-size: 13px; color: var(--muted); }
+/* Whole image at its own shape; the caption bar sits underneath, never on top. */
+.cam .media { position: relative; background: #111; }
+.cam img { display: block; width: 100%; height: auto; cursor: zoom-in; }
+.cam img:not([src]) { aspect-ratio: 16 / 9; }
+.cam-error { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 13px; }
+figcaption { padding: 5px 10px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
+.cam figcaption, .stream figcaption { display: flex; align-items: center; gap: 8px; }
+.cap-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cap-status { font-size: 11px; color: var(--dim); white-space: nowrap; }
+.cap-status[data-key=connecting]::before, .cap-status[data-key=goingLive]::before, .cap-status[data-key=reconnecting]::before {
+  content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: #ffb000; animation: pulse 1.2s ease-in-out infinite; vertical-align: 0; }
+.cap-status[data-key=liveNow] { color: #ff5a5a; font-weight: 600; letter-spacing: .04em; }
+.cap-status[data-key=liveNow]::before { content: "● "; }
+.cap-status[data-key=notLive] { color: var(--warn); }
+
+/* Webcam overlay */
+.lightbox { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.85); display: grid; place-items: center; padding: 16px; cursor: zoom-out; }
+.lightbox figure { margin: 0; max-width: 100%; cursor: default; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.lightbox img { display: block; max-width: calc(100vw - 34px); max-height: calc(100vh - 80px); width: auto; height: auto; }
+.lightbox figcaption { display: flex; align-items: center; gap: 8px; }
 .stream .frame { position: relative; aspect-ratio: 16 / 9; background: #000; }
 .stream iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; pointer-events: none; opacity: 0; transition: opacity .6s; }
 .stream.ready iframe { opacity: 1; }
-.stream-cover { position: absolute; inset: 0; background: #0d0d0e center / cover no-repeat; transition: opacity .6s; pointer-events: none; }
-.cover-label { position: absolute; left: 8px; bottom: 8px; font-size: 12px; color: #ddd; background: rgba(0,0,0,.6); padding: 2px 8px; border-radius: 999px; }
-.cover-label::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: #ffb000; animation: pulse 1.2s ease-in-out infinite; vertical-align: 1px; }
+.stream-cover { position: absolute; inset: 0; background: #0d0d0e center / contain no-repeat; transition: opacity .6s; pointer-events: none; }
+.cover-msg:empty { display: none; }
 @keyframes pulse { 50% { opacity: .25; } }
 .stream.ready .stream-cover { opacity: 0; }
 .stream.dead .stream-cover { background-image: none !important; display: grid; place-items: center; }
-.stream.dead .cover-label { position: static; color: var(--warn); background: none; text-align: center; padding: 0 16px; }
-.stream.dead .cover-label::before { display: none; }
-.stream figcaption { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.stream.dead .cover-msg { color: var(--warn); text-align: center; padding: 0 16px; font-size: 13px; }
 .stream-btns { display: flex; gap: 4px; }
 .stream-btns button { font-size: 14px; min-width: 30px; padding: 1px 6px; }
 .frame:fullscreen { background: #000; }

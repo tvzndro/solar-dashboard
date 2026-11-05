@@ -3,6 +3,7 @@
 const STRINGS = {
   en: {
     locale: 'en-GB',
+    zoom: 'Enlarge', liveNow: 'LIVE',
     s_nearby: 'Cameras nearby', s_catalogSearch: 'Search all cameras in Norway…', s_radius: 'Radius', s_added: 'Added ✓',
     s_noNearby: (km) => `No cameras within ${km} km — try a larger radius or search.`, s_showAll: (n) => `Show all ${n}`,
     s_catalogSource: (d) => `Camera list from vindnå.no (collected ${d}). The cameras belong to their operators.`,
@@ -93,6 +94,7 @@ const STRINGS = {
   },
   nb: {
     locale: 'nb-NO',
+    zoom: 'Forstørr', liveNow: 'DIREKTE',
     s_nearby: 'Kameraer i nærheten', s_catalogSearch: 'Søk i alle kameraer i Norge…', s_radius: 'Radius', s_added: 'Lagt til ✓',
     s_noNearby: (km) => `Ingen kameraer innen ${km} km — prøv større radius eller søk.`, s_showAll: (n) => `Vis alle ${n}`,
     s_catalogSource: (d) => `Kameraliste fra vindnå.no (hentet ${d}). Kameraene tilhører sine eiere.`,

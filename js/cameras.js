@@ -1,6 +1,7 @@
 // Webcam images (periodically refreshed) and YouTube live streams (autoplay, muted).
 
 import { t } from './i18n.js';
+import { clock } from './format.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -107,7 +108,7 @@ function watchUntilLive(item) {
     return;
   }
   item.liveSince ??= Date.now();
-  if (Date.now() - item.liveSince >= REVEAL_MS) { item.el.classList.add('ready'); item.recoveries = 0; }
+  if (Date.now() - item.liveSince >= REVEAL_MS) { item.el.classList.add('ready'); item.recoveries = 0; setCover(item, 'liveNow'); }
 }
 
 /**
@@ -134,7 +135,12 @@ function recover(item) {
 function setCover(item, key) {
   const cover = item.el.querySelector('.stream-cover');
   if (!cover) return;
-  if (cover.dataset.key !== key) { cover.dataset.key = key; cover.querySelector('.cover-label').textContent = t(key); }
+  if (cover.dataset.key !== key) {
+    cover.dataset.key = key;
+    cover.querySelector('.cover-msg').textContent = key === 'notLive' ? t(key) : '';
+    const status = item.el.querySelector('.cap-status');
+    status.textContent = t(key); status.dataset.key = key;
+  }
   item.el.classList.toggle('dead', key === 'notLive');
   // Placeholder: YouTube's latest still of the live stream (refreshed by YouTube every few minutes).
   const id = item.videoId;
@@ -175,6 +181,8 @@ function scheduleKeepLive(item) {
   clearTimeout(item.settleTimer);
   item.settleTimer = setTimeout(() => keepLive(item), SETTLE_MS);
 }
+
+const clockNow = () => clock(Date.now()); // when the image was last refreshed (location's time zone)
 
 function bust(url) {
   return url + (url.includes('?') ? '&' : '?') + '_ts=' + Math.floor(Date.now() / 1000);
@@ -241,6 +249,27 @@ export class Cameras {
     }
   }
 
+  /** Full-screen overlay for a webcam image (kept up to date while open). */
+  #showLightbox(fig) {
+    let box = document.querySelector('.lightbox');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'lightbox';
+      box.hidden = true;
+      box.innerHTML = `<figure><img alt=""><figcaption><span class="cap-name"></span><span class="cap-status"></span>
+        <button type="button" class="icon" data-close aria-label="${esc(t('s_close'))}">✕</button></figcaption></figure>`;
+      document.body.appendChild(box);
+      const close = () => { box.hidden = true; this.lightboxFor = null; };
+      box.addEventListener('click', (e) => { if (e.target === box || e.target.closest('[data-close]')) close(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !box.hidden) close(); });
+    }
+    this.lightboxFor = fig;
+    box.querySelector('img').src = fig.querySelector('.media img').src;
+    box.querySelector('.cap-name').textContent = fig.querySelector('.cap-name').textContent;
+    box.querySelector('.cap-status').textContent = fig.querySelector('.cam-time').textContent;
+    box.hidden = false;
+  }
+
   /** Only rebuilds when the camera config actually changed, so streams keep playing. */
   update({ images, streams, showCameras, showStreams, streamIdleMinutes = 5 }) {
     this.streamIdleMs = Math.max(1, streamIdleMinutes) * 60_000;
@@ -264,8 +293,9 @@ export class Cameras {
         <figure class="stream">
           <div class="frame"><iframe src="${esc(s.embed)}" title="${esc(s.name || 'YouTube')}" tabindex="-1"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
-            <div class="stream-cover" data-key="connecting"><span class="cover-label">${esc(t('connecting'))}</span></div></div>
-          <figcaption><span>${esc(s.name || '')}</span>
+            <div class="stream-cover" data-key="connecting"><span class="cover-msg"></span></div></div>
+          <figcaption><span class="cap-name">${esc(s.name || '')}</span>
+            <span class="cap-status" data-key="connecting">${esc(t('connecting'))}</span>
             <span class="stream-btns">
               <button type="button" class="icon" data-stream="mute" aria-label="${esc(t('unmute'))}" title="${esc(t('unmute'))}">🔇</button>
               <button type="button" class="icon" data-stream="full" aria-label="${esc(t('fullscreen'))}" title="${esc(t('fullscreen'))}">⛶</button>
@@ -275,9 +305,12 @@ export class Cameras {
     if (imgs.length) {
       parts.push(`<h2 class="section-title">${esc(t('cameras'))}</h2><div class="cam-grid">${imgs.map((c, i) => `
         <figure class="cam" data-i="${i}">
-          <img alt="${esc(c.name || '')}" decoding="async">
-          <div class="cam-error" hidden>${esc(t('camError'))}</div>
-          <figcaption>${esc(c.name || '')}</figcaption>
+          <div class="media"><img alt="${esc(c.name || '')}" decoding="async">
+            <div class="cam-error" hidden>${esc(t('camError'))}</div></div>
+          <figcaption><span class="cap-name">${esc(c.name || '')}</span>
+            <span class="cap-status cam-time"></span>
+            <span class="stream-btns"><button type="button" class="icon" data-zoom aria-label="${esc(t('zoom'))}" title="${esc(t('zoom'))}">⤢</button></span>
+          </figcaption>
         </figure>`).join('')}</div>`);
     }
     this.el.innerHTML = parts.join('');
@@ -328,7 +361,11 @@ export class Cameras {
       const load = () => {
         lastLoad = Date.now();
         const probe = new Image();
-        probe.onload = () => { img.src = probe.src; err.hidden = true; fig.classList.remove('failed'); };
+        probe.onload = () => {
+          img.src = probe.src; err.hidden = true; fig.classList.remove('failed');
+          fig.querySelector('.cam-time').textContent = clockNow();
+          if (this.lightboxFor === fig) this.#showLightbox(fig); // keep an open overlay current
+        };
         probe.onerror = () => { if (!img.src) { err.hidden = false; fig.classList.add('failed'); } };
         probe.src = bust(cam.url);
       };
@@ -344,7 +381,8 @@ export class Cameras {
       load();
       item.resume();
       this.items.push(item);
-      fig.addEventListener('click', () => fig.classList.toggle('wide'));
+      // Zoom: the image or the ⤢ button opens a full-screen overlay.
+      fig.addEventListener('click', (e) => { if (e.target.closest('img, [data-zoom]') && img.src) this.#showLightbox(fig); });
     });
 
     // Everything starts active; anything not seen within IDLE_TIMEOUT gets suspended.

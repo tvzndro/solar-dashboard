@@ -179,9 +179,10 @@ export class Settings {
           <fieldset data-section="config">${this.#configSection()}</fieldset>
         </div>
       </form>`;
+    // Restore the scroll position only once the camera list has been drawn (otherwise the
+    // shorter dialog clamps it and the view jumps to the bottom).
+    this.pendingScroll = scrollTop;
     this.#renderCatalog();
-    const body = this.dlg.querySelector('.settings-body');
-    if (body) body.scrollTop = scrollTop;
   }
 
   #configSection() {
@@ -343,12 +344,20 @@ export class Settings {
     this.#build();
   }
 
+  #restoreScroll() {
+    if (this.pendingScroll == null) return;
+    const body = this.dlg.querySelector('.settings-body');
+    if (body) body.scrollTop = this.pendingScroll;
+    this.pendingScroll = null;
+  }
+
   async #renderCatalog() {
     const box = this.dlg.querySelector('[data-catalog]');
-    if (!box) return;
-    const catalog = await loadCatalog();
+    if (!box) { this.#restoreScroll(); return; }
+    // Draw synchronously once loaded, so rebuilding the dialog doesn't flicker or jump.
+    const catalog = this.catalogData !== undefined ? this.catalogData : (this.catalogData = await loadCatalog());
     if (!this.dlg.contains(box)) return; // dialog rebuilt meanwhile
-    if (!catalog) { box.innerHTML = `<p class="hint">${esc(t('s_catalogMissing'))}</p>`; return; }
+    if (!catalog) { box.innerHTML = `<p class="hint">${esc(t('s_catalogMissing'))}</p>`; this.#restoreScroll(); return; }
     const loc = this.config.effective.location;
     const { radius, query, more } = this.catalogUI;
     const found = findCameras(catalog, this.config.hasLocation ? loc : null, { radiusKm: radius, query });
@@ -379,6 +388,7 @@ export class Settings {
       + (found.filter((c) => c.kind === 'stream').length > limit || found.filter((c) => c.kind === 'image').length > limit
         ? `<button type="button" class="link" data-act="catalog-more">${esc(t('s_showAll', total))}</button>` : '')
       + `<p class="hint">${esc(t('s_catalogSource', catalog.scrapedAt.slice(0, 10)))}</p>`;
+    this.#restoreScroll();
   }
 
   /** Show a larger preview of a catalogue thumbnail next to it (null hides). */
