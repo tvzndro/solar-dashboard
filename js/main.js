@@ -1,6 +1,6 @@
 // App bootstrap: wires config, data, graphic, cards, cameras and settings together.
 
-import { Config } from './config.js';
+import { Config, streamsFor } from './config.js';
 import { setLanguage, t } from './i18n.js';
 import * as f from './format.js';
 import { DataStore } from './data/store.js';
@@ -132,7 +132,7 @@ function render() {
     units: c.units, showSources: c.debug.showSources,
   }, c.layout.cards);
 
-  cameras.update({ images: c.cameras.images, streams: c.cameras.streams, showCameras: c.layout.showCameras, showStreams: c.layout.showStreams });
+  cameras.update({ images: c.cameras.images, streams: streamsFor(c), showCameras: c.layout.showCameras, showStreams: c.layout.showStreams });
 
   // Status line.
   const srcs = Object.values(store.sources);

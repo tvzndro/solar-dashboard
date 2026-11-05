@@ -28,9 +28,13 @@ Everything is saved in that browser (localStorage). To set up another machine, u
 
 ### Streams
 
-Add YouTube streams in settings: a video ID, a channel ID (UC…) or a URL. A channel ID always shows that channel's current live stream. Streams autoplay muted, because browsers block autoplay with sound.
+Add YouTube streams in settings: a video ID, a channel ID (UC…) or any YouTube URL. Links are cleaned to a canonical form automatically (tracking parameters such as `pp=`/`si=` removed), and a new stream is named after its YouTube title. Streams autoplay muted, because browsers block autoplay with sound; use the 🔇 button to unmute.
 
-Prefer channel IDs: a video ID stops working when the channel restarts its stream. Streams are kept live: one that falls more than 40 s behind real time (normal YouTube latency is 15–25 s) jumps to the live edge. Webcams and streams stop after a minute out of view and resume, live, when scrolled back into view.
+Use a video ID for a specific camera and a channel ID when the channel only runs one stream. A channel link only ever shows *one* live stream, so it can't be used for channels with several cameras (e.g. NK-Nett).
+
+Without a stream list of your own, a location near Bodø gets the built-in defaults: Molostua, Linken and Golfklubb (see `js/presets.js`). Editing the list replaces them; resetting it brings them back.
+
+Each stream stays covered until it is verified to be playing at the live edge (YouTube often starts embeds at the beginning of its 12-hour rewind buffer); streams that drift more than 40 s behind jump back to live. If a stream ends or its link stops working, the stream shows a notice to replace the link. Webcams and streams stop after a minute out of view and resume, live, when scrolled back into view.
 
 ## Data sources (all keyless, browser-direct)
 

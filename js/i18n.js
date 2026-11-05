@@ -3,6 +3,8 @@
 const STRINGS = {
   en: {
     locale: 'en-GB',
+    goingLive: 'Jumping to live…', notLive: 'This stream is not live — the link may have changed (edit it in Settings)',
+    s_streamPreset: (place) => `Default live streams for ${place}. Edit the list to use your own.`,
     connecting: 'Connecting to live stream…', mute: 'Mute', unmute: 'Unmute', fullscreen: 'Fullscreen',
     card_tide: 'Tide', ov_tide: 'Tide', nextHigh: 'Next high water', nextLow: 'Next low water',
     tideRising: 'rising', tideFalling: 'falling', relMsl: 'relative to mean sea level',
@@ -86,6 +88,8 @@ const STRINGS = {
   },
   nb: {
     locale: 'nb-NO',
+    goingLive: 'Hopper til direkte…', notLive: 'Denne sendingen er ikke direkte — lenken kan ha endret seg (endre den i Innstillinger)',
+    s_streamPreset: (place) => `Standard direktesendinger for ${place}. Endre lista for å bruke dine egne.`,
     connecting: 'Kobler til direktesending…', mute: 'Demp lyd', unmute: 'Slå på lyd', fullscreen: 'Fullskjerm',
     card_tide: 'Tidevann', ov_tide: 'Tidevann', nextHigh: 'Neste høyvann', nextLow: 'Neste lavvann',
     tideRising: 'stigende', tideFalling: 'synkende', relMsl: 'i forhold til middelvann',

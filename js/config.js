@@ -3,6 +3,9 @@
 // and scalars are replaced whole. The built-in defaults hold no location or
 // cameras: a fresh browser starts with the settings dialog open.
 
+import { canonicalStreamLink } from './cameras.js';
+import { presetFor } from './presets.js';
+
 const LS_KEY = 'solar-dashboard.overrides.v1';
 
 export const BUILTIN_DEFAULTS = {
@@ -16,7 +19,7 @@ export const BUILTIN_DEFAULTS = {
   },
   overlays: { sunCurve: true, moon: true, temperature: true, tide: true, clouds: true, precipitation: true, kp: true },
   snowWindowHours: 12,
-  cameras: { images: [], streams: [] },
+  cameras: { images: [], streams: null }, // streams: null = the location's default streams (presets.js)
   debug: { showSources: false, mock: false },
 };
 
@@ -83,6 +86,16 @@ function normaliseLayout(cfg) {
   return cfg;
 }
 
+/** The stream list in effect: the user's own list, or the default streams for the location. */
+export function streamsFor(cfg) {
+  if (Array.isArray(cfg.cameras?.streams)) return cfg.cameras.streams;
+  return presetFor(cfg.location)?.streams || [];
+}
+
+function canonicalStreams(list) {
+  return Array.isArray(list) ? list.map((s) => ({ ...s, youtube: canonicalStreamLink(s.youtube) })) : list;
+}
+
 export function hasLocation(loc) {
   return !!loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lon);
 }
@@ -93,6 +106,12 @@ export class Config {
     this.sharedLoaded = false;
     this.sharedError = null;
     this.overrides = this.#readOverrides();
+    // Tidy saved stream links (tracking parameters etc.) to their canonical form.
+    const saved = this.overrides.cameras?.streams;
+    if (Array.isArray(saved) && JSON.stringify(canonicalStreams(saved)) !== JSON.stringify(saved)) {
+      this.overrides.cameras.streams = canonicalStreams(saved);
+      try { localStorage.setItem(LS_KEY, JSON.stringify(this.overrides)); } catch { /* private mode */ }
+    }
     this.listeners = new Set();
   }
 
@@ -161,6 +180,7 @@ export class Config {
     const clean = Object.fromEntries(Object.entries(obj).filter(([k]) => known.includes(k)));
     if (!Object.keys(clean).length) throw new Error('No recognised settings in file');
     if (clean.location && !hasLocation(clean.location)) throw new Error('Location needs numeric lat and lon');
+    if (Array.isArray(clean.cameras?.streams)) clean.cameras = { ...clean.cameras, streams: canonicalStreams(clean.cameras.streams) };
     this.overrides = clean;
     this.#save();
   }

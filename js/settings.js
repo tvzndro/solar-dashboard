@@ -2,7 +2,9 @@
 // differs from the shared config.json, with per-item and global reset.
 
 import { t, language } from './i18n.js';
-import { getPath } from './config.js';
+import { getPath, streamsFor } from './config.js';
+import { canonicalStreamLink, streamTitle } from './cameras.js';
+import { presetFor } from './presets.js';
 import { geocode } from './data/fetchers.js';
 import { SNOW_WINDOWS } from './cards.js';
 import { isValidTimeZone } from './time.js';
@@ -122,7 +124,8 @@ export class Settings {
             <button type="button" data-act="cam-add" data-list="images">+ ${esc(t('s_add'))}</button>
             <h3>${esc(t('s_streamList'))} ${this.marker('cameras.streams')}</h3>
             <p class="hint">${esc(t('s_streamHint'))}</p>
-            ${c.cameras.streams.map((s, i) => `
+            ${!Array.isArray(c.cameras.streams) && presetFor(c.location) ? `<p class="hint">${esc(t('s_streamPreset', presetFor(c.location).place))}</p>` : ''}
+            ${streamsFor(c).map((s, i) => `
               <div class="cam-row">
                 <input data-cam="streams" data-i="${i}" data-field="name" value="${esc(s.name)}" placeholder="${esc(t('s_name'))}">
                 <input data-cam="streams" data-i="${i}" data-field="youtube" value="${esc(s.youtube)}" placeholder="${esc(t('s_youtube'))}" class="wide">
@@ -192,9 +195,26 @@ export class Settings {
       cfg.set('location', loc);
       this.#refreshMarkers();
     } else if (el.dataset.cam) {
-      const list = cfg.get(`cameras.${el.dataset.cam}`).map((x) => ({ ...x }));
-      const v = el.dataset.field === 'refreshSeconds' ? Math.max(10, Number(el.value) || 60) : el.value.trim();
-      list[+el.dataset.i][el.dataset.field] = v;
+      const list = this.#list(el.dataset.cam);
+      let v = el.dataset.field === 'refreshSeconds' ? Math.max(10, Number(el.value) || 60) : el.value.trim();
+      const row = list[+el.dataset.i];
+      if (el.dataset.field === 'youtube') {
+        v = canonicalStreamLink(v);
+        el.value = v; // show the cleaned-up link
+        // Name a new stream after its YouTube title.
+        if (!row.name && v) {
+          streamTitle(v).then((title) => {
+            if (!title) return;
+            const again = this.#list('streams');
+            if (again[+el.dataset.i] && !again[+el.dataset.i].name) {
+              again[+el.dataset.i].name = title;
+              cfg.set('cameras.streams', again);
+              this.#build();
+            }
+          });
+        }
+      }
+      row[el.dataset.field] = v;
       cfg.set(`cameras.${el.dataset.cam}`, list);
       this.#refreshMarkers();
     }
@@ -216,12 +236,12 @@ export class Settings {
       const again = this.dlg.querySelector(`[data-act=card-move][data-i="${j}"][data-d="${btn.dataset.d}"]`);
       (again && !again.disabled ? again : this.dlg.querySelector(`[data-card="${cards[j].id}"]`))?.focus();
     } else if (act === 'cam-add') {
-      const list = cfg.get(`cameras.${btn.dataset.list}`);
+      const list = this.#list(btn.dataset.list);
       list.push(btn.dataset.list === 'images' ? { name: '', url: '', refreshSeconds: 60 } : { name: '', youtube: '' });
       cfg.set(`cameras.${btn.dataset.list}`, list);
       this.#build();
     } else if (act === 'cam-remove') {
-      const list = cfg.get(`cameras.${btn.dataset.list}`);
+      const list = this.#list(btn.dataset.list);
       list.splice(+btn.dataset.i, 1);
       cfg.set(`cameras.${btn.dataset.list}`, list);
       this.#build();
@@ -254,6 +274,12 @@ export class Settings {
       cfg.set('location', { name: r.name, lat: r.lat, lon: r.lon, timezone: r.timezone });
       this.#build();
     }
+  }
+
+  /** Editable copy of a camera list; streams start from the location's defaults if the user has none. */
+  #list(kind) {
+    const c = this.config.effective;
+    return (kind === 'streams' ? streamsFor(c) : c.cameras.images).map((x) => ({ ...x }));
   }
 
   #search(q) {

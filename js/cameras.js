@@ -4,6 +4,29 @@ import { t } from './i18n.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+/**
+ * The canonical form of a stream link: https://www.youtube.com/watch?v=ID for a video,
+ * https://www.youtube.com/channel/UC… for a channel. Drops tracking parameters (pp=, si=, t=, …).
+ * Returns the input unchanged if it isn't recognisable.
+ */
+export function canonicalStreamLink(input) {
+  const s = String(input || '').trim();
+  let m;
+  if ((m = s.match(/(?:channel\/|^)(UC[\w-]{22})(?:$|[/?#])/))) return `https://www.youtube.com/channel/${m[1]}`;
+  if ((m = s.match(/(?:v=|youtu\.be\/|\/live\/|\/embed\/|\/shorts\/)([\w-]{11})/)) || (m = s.match(/^([\w-]{11})$/))) {
+    return `https://www.youtube.com/watch?v=${m[1]}`;
+  }
+  return s;
+}
+
+/** Stream title via YouTube's oEmbed (official, CORS-enabled); null if unavailable. */
+export async function streamTitle(link) {
+  try {
+    const res = await fetch(`https://www.youtube.com/oembed?format=json&url=${encodeURIComponent(canonicalStreamLink(link))}`);
+    return res.ok ? (await res.json()).title || null : null;
+  } catch { return null; }
+}
+
 /** Accepts a video ID, a channel ID (UC…), or any common YouTube URL. */
 export function youtubeEmbedUrl(input) {
   const s = String(input || '').trim();
@@ -60,8 +83,42 @@ function liveLag(p) {
   } catch { return null; }
 }
 
+/**
+ * Until a stream is shown, check every second: if YouTube started it behind live
+ * (it often starts at the beginning of its 12-hour DVR buffer), jump to the live
+ * edge while it is still covered; reveal it only after it has played at live for
+ * REVEAL_MS (which also lets YouTube's start-of-playback overlay fade).
+ */
+function watchUntilLive(item) {
+  if (item.el.classList.contains('ready') || !item.active || !item.player) return;
+  let state, data;
+  try { state = item.player.getPlayerState(); data = item.player.getVideoData?.() || {}; } catch { return; }
+  if (state === 0 || item.errored) { setCover(item, 'notLive'); return; } // ended / unavailable
+  if (state !== 1) { item.liveSince = null; return; }
+  if (data.isLive === false) { setCover(item, 'notLive'); return; }
+  const lag = liveLag(item.player);
+  if (lag != null && lag > MAX_LAG) {
+    item.liveSince = null;
+    setCover(item, 'goingLive');
+    if (Date.now() - (item.lastSeek || 0) > 4000) {
+      item.lastSeek = Date.now();
+      try { item.player.seekTo(item.player.getCurrentTime() + lag + 60, true); } catch { /* player gone */ }
+    }
+    return;
+  }
+  item.liveSince ??= Date.now();
+  if (Date.now() - item.liveSince >= REVEAL_MS) item.el.classList.add('ready');
+}
+
+function setCover(item, key) {
+  const cover = item.el.querySelector('.stream-cover');
+  if (cover && cover.dataset.key !== key) { cover.dataset.key = key; cover.textContent = t(key); }
+  item.el.classList.toggle('dead', key === 'notLive');
+}
+
 /** One correction attempt, guarded by cooldown and a failure limit (no seek loops). */
 function keepLive(item) {
+  if (!item.el.classList.contains('ready')) return; // still covered: watchUntilLive handles it
   const p = item.player;
   try { if (!p || p.getPlayerState() !== 1 /* PLAYING */) return; } catch { return; }
   const lag = liveLag(p);
@@ -139,7 +196,7 @@ export class Cameras {
         <figure class="stream">
           <div class="frame"><iframe src="${esc(s.embed)}" title="${esc(s.name || 'YouTube')}" tabindex="-1"
             allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
-            <div class="stream-cover">${esc(t('connecting'))}</div></div>
+            <div class="stream-cover" data-key="connecting">${esc(t('connecting'))}</div></div>
           <figcaption><span>${esc(s.name || '')}</span>
             <span class="stream-btns">
               <button type="button" class="icon" data-stream="mute" aria-label="${esc(t('unmute'))}" title="${esc(t('unmute'))}">🔇</button>
@@ -163,14 +220,14 @@ export class Cameras {
       const item = {
         el: fig, inView: false, active: true, player: null,
         suspend: () => {
-          clearTimeout(item.revealTimer); item.revealTimer = null; fig.classList.remove('ready');
+          fig.classList.remove('ready'); item.liveSince = null; setCover(item, 'connecting');
           try { item.player?.stopVideo(); } catch { /* not ready */ }
         },
         resume: () => { item.failures = 0; try { item.player?.playVideo(); } catch { /* not ready */ } },
       };
       this.items.push(item);
       // Fallback if the YouTube API never loads: show the frame anyway.
-      item.revealTimer = setTimeout(() => fig.classList.add('ready'), 20_000);
+      setTimeout(() => { if (!item.player) fig.classList.add('ready'); }, 20_000);
       fig.addEventListener('click', (e) => {
         const btn = e.target.closest('[data-stream]');
         if (!btn) return;
@@ -232,17 +289,14 @@ export class Cameras {
         events: {
           onReady: (e) => { if (!item.active) e.target.stopVideo(); },
           onStateChange: (e) => {
-            if (e.data !== YT.PlayerState.PLAYING) return;
-            scheduleKeepLive(item);
-            // Uncover once YouTube's start-of-playback overlay has faded.
-            if (!item.el.classList.contains('ready')) {
-              clearTimeout(item.revealTimer);
-              item.revealTimer = setTimeout(() => item.el.classList.add('ready'), REVEAL_MS);
-            }
+            if (e.data === YT.PlayerState.PLAYING) { item.errored = false; scheduleKeepLive(item); }
+            if (e.data === YT.PlayerState.ENDED) { item.el.classList.remove('ready'); setCover(item, 'notLive'); }
           },
+          onError: () => { item.errored = true; item.el.classList.remove('ready'); setCover(item, 'notLive'); },
         },
       });
     }
+    this.timers.push(setInterval(() => { for (const it of items) watchUntilLive(it); }, 1000));
     // Catch slow drift (stalls, sleeping laptop).
     this.timers.push(setInterval(() => {
       if (!document.hidden) for (const it of items) if (it.active) keepLive(it);

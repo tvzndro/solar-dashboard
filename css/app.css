@@ -173,6 +173,7 @@ figcaption { padding: 5px 10px; font-size: 13px; color: var(--muted); }
 .stream.ready iframe { opacity: 1; }
 .stream-cover { position: absolute; inset: 0; display: grid; place-items: center; color: var(--dim); font-size: 13px; background: #0d0d0e; transition: opacity .6s; pointer-events: none; }
 .stream.ready .stream-cover { opacity: 0; }
+.stream.dead .stream-cover { color: var(--warn); padding: 0 16px; text-align: center; }
 .stream figcaption { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .stream-btns { display: flex; gap: 4px; }
 .stream-btns button { font-size: 14px; min-width: 30px; padding: 1px 6px; }
