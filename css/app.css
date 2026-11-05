@@ -231,6 +231,18 @@ input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
 .pill { font-size: 11px; background: #3a2f12; color: #ffcf6a; border-radius: 999px; padding: 0 7px; }
 .overrides { padding-left: 18px; margin: 4px 0 8px; }
 .overrides code { font-family: var(--mono); font-size: 13px; }
+.catalog-controls { display: flex; gap: 8px; align-items: center; }
+.catalog-controls input { margin: 0; }
+.catalog-controls select { width: auto; margin: 0; }
+.catalog h4 { font-size: 13px; margin: 12px 0 4px; }
+.cat-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 4px; }
+.cat-list li { display: grid; grid-template-columns: 80px 1fr auto; gap: 10px; align-items: center; padding: 3px; border-radius: 6px; }
+.cat-list li.added { background: #1d2a1d; }
+.cat-list img { width: 80px; height: 45px; object-fit: cover; border-radius: 4px; background: #111; }
+.cat-text { display: flex; flex-direction: column; min-width: 0; }
+.cat-text b { font-weight: 500; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cat-text .hint { margin: 0; }
+.cat-list li.added button { color: #8fd48f; }
 .export { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 
 @media (max-width: 640px) {

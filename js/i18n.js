@@ -3,6 +3,10 @@
 const STRINGS = {
   en: {
     locale: 'en-GB',
+    s_nearby: 'Cameras nearby', s_catalogSearch: 'Search all cameras in Norway…', s_radius: 'Radius', s_added: 'Added ✓',
+    s_noNearby: (km) => `No cameras within ${km} km — try a larger radius or search.`, s_showAll: (n) => `Show all ${n}`,
+    s_catalogSource: (d) => `Camera list from vindnå.no (collected ${d}). The cameras belong to their operators.`,
+    s_catalogMissing: 'Camera list not available.',
     reconnecting: 'Reconnecting…',
     s_streamIdle: 'Keep streams running after last activity', s_streamIdleHint: 'Streams on screen always play. Scrolled out of view, they keep running (so they are live when you scroll down) until there has been no mouse, keyboard or touch activity for this long; any activity starts them again. Each running stream uses about 0.35 Mbit/s (~160 MB per hour). In a background tab streams stop after 1 min.',
     goingLive: 'Jumping to live…', notLive: 'This stream is not live — the link may have changed (edit it in Settings)',
@@ -89,6 +93,10 @@ const STRINGS = {
   },
   nb: {
     locale: 'nb-NO',
+    s_nearby: 'Kameraer i nærheten', s_catalogSearch: 'Søk i alle kameraer i Norge…', s_radius: 'Radius', s_added: 'Lagt til ✓',
+    s_noNearby: (km) => `Ingen kameraer innen ${km} km — prøv større radius eller søk.`, s_showAll: (n) => `Vis alle ${n}`,
+    s_catalogSource: (d) => `Kameraliste fra vindnå.no (hentet ${d}). Kameraene tilhører sine eiere.`,
+    s_catalogMissing: 'Kameralista er ikke tilgjengelig.',
     reconnecting: 'Kobler til på nytt…',
     s_streamIdle: 'La sendinger gå etter siste aktivitet', s_streamIdleHint: 'Sendinger på skjermen spiller alltid. Når de er scrollet ut av syne, fortsetter de (så de er direkte når du scroller ned) til det ikke har vært mus-, tastatur- eller berøringsaktivitet så lenge; all aktivitet starter dem igjen. Hver sending bruker ca. 0,35 Mbit/s (~160 MB i timen). I en bakgrunnsfane stopper sendinger etter 1 min.',
     goingLive: 'Hopper til direkte…', notLive: 'Denne sendingen er ikke direkte — lenken kan ha endret seg (endre den i Innstillinger)',

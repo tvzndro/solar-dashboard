@@ -3,3 +3,4 @@ node_modules/
 # Personal settings — never commit (location, cameras, streams)
 example config/
 config.json
+.scrape-cache/

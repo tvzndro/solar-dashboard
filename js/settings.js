@@ -3,7 +3,8 @@
 
 import { t, language } from './i18n.js';
 import { getPath, streamsFor } from './config.js';
-import { canonicalStreamLink, streamTitle } from './cameras.js';
+import { canonicalStreamLink, streamTitle, videoIdOf } from './cameras.js';
+import { loadCatalog, findCameras } from './catalog.js';
 import { geocode } from './data/fetchers.js';
 import { SNOW_WINDOWS } from './cards.js';
 import { isValidTimeZone } from './time.js';
@@ -16,9 +17,16 @@ export class Settings {
     this.config = config;
     this.searchAbort = null;
     this.searchTimer = null;
+    this.catalogUI = { radius: 25, query: '', more: false }; // camera picker state (not saved)
     dialog.addEventListener('click', (e) => this.#onClick(e));
     dialog.addEventListener('change', (e) => this.#onChange(e));
-    dialog.addEventListener('input', (e) => { if (e.target.matches('[data-search]')) this.#search(e.target.value); });
+    dialog.addEventListener('input', (e) => {
+      if (e.target.matches('[data-search]')) this.#search(e.target.value);
+      if (e.target.matches('[data-catalog-query]')) {
+        this.catalogUI.query = e.target.value; this.catalogUI.more = false;
+        clearTimeout(this.catalogTimer); this.catalogTimer = setTimeout(() => this.#renderCatalog(), 150);
+      }
+    });
     dialog.addEventListener('click', (e) => { if (e.target === dialog) dialog.close(); }); // backdrop
     // Enter in a text field would submit the dialog form (= close); commit the field instead.
     dialog.addEventListener('keydown', (e) => {
@@ -112,6 +120,14 @@ export class Settings {
           <fieldset><legend>${esc(t('s_cameras'))}</legend>
             ${check('layout.showCameras', t('s_showCameras'))}
             ${check('layout.showStreams', t('s_showStreams'))}
+            <h3>${esc(t('s_nearby'))}</h3>
+            <div class="catalog-controls">
+              <input type="search" data-catalog-query placeholder="${esc(t('s_catalogSearch'))}" value="${esc(this.catalogUI.query)}" autocomplete="off">
+              <select data-catalog-radius aria-label="${esc(t('s_radius'))}">
+                ${[10, 25, 50, 100].map((n) => `<option value="${n}" ${this.catalogUI.radius === n ? 'selected' : ''}>${n} km</option>`).join('')}
+              </select>
+            </div>
+            <div class="catalog" data-catalog><p class="hint">${esc(t('loading'))}</p></div>
             <h3>${esc(t('s_images'))} ${this.marker('cameras.images')}</h3>
             ${c.cameras.images.map((cam, i) => `
               <div class="cam-row">
@@ -145,6 +161,7 @@ export class Settings {
           <fieldset data-section="config">${this.#configSection()}</fieldset>
         </div>
       </form>`;
+    this.#renderCatalog();
     const body = this.dlg.querySelector('.settings-body');
     if (body) body.scrollTop = scrollTop;
   }
@@ -168,6 +185,8 @@ export class Settings {
   #onChange(e) {
     const el = e.target;
     const cfg = this.config;
+    if (el.matches('[data-catalog-radius]')) { this.catalogUI.radius = +el.value; this.catalogUI.more = false; this.#renderCatalog(); return; }
+    if (el.matches('[data-catalog-query]')) return; // handled on input
     if (el.dataset.bind) {
       let v = el.type === 'checkbox' ? el.checked : el.value;
       if (el.dataset.type === 'number') v = Number(v);
@@ -228,6 +247,8 @@ export class Settings {
     if (!btn) return;
     const cfg = this.config;
     const act = btn.dataset.act;
+    if (act === 'catalog-toggle') { this.#toggleCatalogCamera(JSON.parse(btn.dataset.catalogCam)); return; }
+    if (act === 'catalog-more') { this.catalogUI.more = true; this.#renderCatalog(); return; }
     if (act === 'reset') { cfg.reset(btn.dataset.path); this.#build(); }
     else if (act === 'reset-all') { cfg.resetAll(); this.#build(); }
     else if (act === 'card-move') {
@@ -277,6 +298,66 @@ export class Settings {
       cfg.set('location', { name: r.name, lat: r.lat, lon: r.lon, timezone: r.timezone });
       this.#build();
     }
+  }
+
+  // ── Camera picker (catalogue from vindnå.no) ──────────────────────────
+  #isAdded(cam) {
+    const c = this.config.effective;
+    if (cam.kind === 'stream') return streamsFor(c).some((s) => videoIdOf(s.youtube) === videoIdOf(cam.youtube));
+    return c.cameras.images.some((i) => i.url === cam.image);
+  }
+
+  #toggleCatalogCamera(cam) {
+    const cfg = this.config;
+    if (cam.kind === 'stream') {
+      const list = this.#list('streams');
+      const i = list.findIndex((s) => videoIdOf(s.youtube) === videoIdOf(cam.youtube));
+      if (i >= 0) list.splice(i, 1); else list.push({ name: cam.name, youtube: cam.youtube });
+      cfg.set('cameras.streams', list);
+      if (i < 0 && !cfg.get('layout.showStreams')) cfg.set('layout.showStreams', true);
+    } else {
+      const list = this.#list('images');
+      const i = list.findIndex((x) => x.url === cam.image);
+      if (i >= 0) list.splice(i, 1); else list.push({ name: cam.name, url: cam.image, refreshSeconds: 60 });
+      cfg.set('cameras.images', list);
+      if (i < 0 && !cfg.get('layout.showCameras')) cfg.set('layout.showCameras', true);
+    }
+    this.#build();
+  }
+
+  async #renderCatalog() {
+    const box = this.dlg.querySelector('[data-catalog]');
+    if (!box) return;
+    const catalog = await loadCatalog();
+    if (!this.dlg.contains(box)) return; // dialog rebuilt meanwhile
+    if (!catalog) { box.innerHTML = `<p class="hint">${esc(t('s_catalogMissing'))}</p>`; return; }
+    const loc = this.config.effective.location;
+    const { radius, query, more } = this.catalogUI;
+    const found = findCameras(catalog, this.config.hasLocation ? loc : null, { radiusKm: radius, query });
+    const limit = more ? 400 : 24;
+    const row = (cam) => {
+      const thumb = cam.kind === 'stream'
+        ? `https://i.ytimg.com/vi/${videoIdOf(cam.youtube)}/mqdefault_live.jpg`
+        : cam.image;
+      const added = this.#isAdded(cam);
+      const where = [cam.municipality, cam.distance != null ? `${cam.distance < 10 ? cam.distance.toFixed(1) : Math.round(cam.distance)} km` : null].filter(Boolean).join(' · ');
+      const data = esc(JSON.stringify({ kind: cam.kind, name: cam.name, youtube: cam.youtube, image: cam.image }));
+      return `<li class="${added ? 'added' : ''}">
+        <img loading="lazy" decoding="async" src="${esc(thumb)}" alt="" onerror="this.style.visibility='hidden'">
+        <span class="cat-text"><b>${esc(cam.name)}</b><span class="hint">${esc(where)}</span></span>
+        <button type="button" data-act="catalog-toggle" data-catalog-cam="${data}">${esc(t(added ? 's_added' : 's_add'))}</button></li>`;
+    };
+    const group = (kind, title) => {
+      const list = found.filter((c) => c.kind === kind);
+      if (!list.length) return '';
+      return `<h4>${esc(title)} <span class="hint">(${list.length})</span></h4><ul class="cat-list">${list.slice(0, limit).map(row).join('')}</ul>`;
+    };
+    const body = group('stream', t('streams')) + group('image', t('cameras'));
+    const total = found.length;
+    box.innerHTML = (body || `<p class="hint">${esc(query ? t('s_noResults') : t('s_noNearby', radius))}</p>`)
+      + (found.filter((c) => c.kind === 'stream').length > limit || found.filter((c) => c.kind === 'image').length > limit
+        ? `<button type="button" class="link" data-act="catalog-more">${esc(t('s_showAll', total))}</button>` : '')
+      + `<p class="hint">${esc(t('s_catalogSource', catalog.scrapedAt.slice(0, 10)))}</p>`;
   }
 
   /** Editable copy of a camera list. */

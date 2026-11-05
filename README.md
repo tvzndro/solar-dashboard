@@ -36,6 +36,19 @@ While a stream connects it shows YouTube's latest still image of that camera, an
 
 Webcams stop refreshing a minute after leaving view. Streams on screen always play; scrolled out of view they keep running while you're using the page, and stop after *Keep streams running after last activity* (default 5 min; 1/15/60 available) without mouse, keyboard, touch or scroll activity. Any activity starts them again in the background, so they're usually live by the time you scroll down. A running stream costs about 0.35 Mbit/s (~160 MB/hour). YouTube serves these streams at 480p regardless of player size, so there's no cheaper way to keep one connected. In a background tab streams always stop after a minute.
 
+### Camera list (Norway)
+
+Settings → *Cameras nearby* lists webcams and YouTube live streams around the chosen location (10–100 km), with a search across all of Norway and one-click add/remove. The list is `data/cameras.json`, collected from [vindnå.no](https://vindnå.no/webkamera); each entry has the camera's name, municipality, position and direct source (YouTube video or image URL). The cameras themselves belong to their operators (Statens vegvesen, yr.no, NK-Nett, …).
+
+The list is **only refreshed by hand**, nothing schedules it:
+
+```sh
+node scripts/scrape-vindnaa.mjs            # whole of Norway (~2,500 requests, ~15 min; 2 at a time with pauses)
+node scripts/scrape-vindnaa.mjs --region nordland --municipality bodø   # quick test
+```
+
+Fetched pages are cached in `.scrape-cache/` (git-ignored), so an interrupted run resumes and a rerun only rebuilds the JSON. Use `--fresh` to fetch everything again, then commit `data/cameras.json`. Cameras whose page has no YouTube video or usable image (e.g. other video players, or images only served through vindnå.no) are skipped.
+
 ## Data sources (all keyless, browser-direct)
 
 | What | Source |
@@ -49,6 +62,7 @@ Webcams stop refreshing a minute after leaving view. Streams on screen always pl
 | Tides elsewhere (model) | Open-Meteo Marine |
 | Sun and moon position, phases, rise/set | Computed locally |
 | Place search | Open-Meteo geocoding |
+| Camera list (Settings) | `data/cameras.json`, collected from vindnå.no by hand |
 
 **Firefox gotcha:** never add custom headers (e.g. `User-Agent`) to api.met.no requests. Firefox would then send a CORS preflight, which MET answers without CORS headers, so the request gets blocked. Use a plain `fetch(url)`. See `js/data/fetchers.js`.
 
