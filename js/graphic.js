@@ -34,6 +34,7 @@ const PRECIP_H = 40;
 const LABEL_H = 26;
 const PAD_X = 10;
 const TOUCH_HOLD = 3000;
+const LINE_W = 1.4; // thin data lines; < ~1.3 px they shimmer in thickness when nearly flat
 const LABEL_FONT = '600 12px system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif';
 const LABEL_FONT_SMALL = '500 11px system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif';
 
@@ -199,11 +200,35 @@ export class DayGraphic {
       ctx.setLineDash([]);
     }
 
-    // Sun and moon discs (moon in front) follow their curves and slide out of the frame (clipped) when off-scale.
+    // Moon and sun discs (sun in front) follow their curves and slide out of the frame (clipped) when off-scale.
+    let moonDisc = null;
+    if (overlays.moon && m.moon) {
+      const mr = Math.max(7, Math.min(10, plotH / 20));
+      const mp = moonPosition(m.viewT, m.lat, m.lon);
+      moonDisc = { x: xOf(m.viewT), y: yOf(mp.elevation), r: mr };
+      ctx.save();
+      ctx.translate(moonDisc.x, moonDisc.y);
+      ctx.globalAlpha = mp.elevation < 0 ? 0.5 : 1;
+      ctx.fillStyle = COLORS.moonDark;
+      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = 'rgba(200,220,255,0.7)'; ctx.shadowBlur = mr * 1.2;
+      ctx.fillStyle = COLORS.moonLit;
+      ctx.fill(new Path2D(litPath(mr, moonIllumination(m.viewT), m.lat < 0)));
+      ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(220,230,255,0.35)'; ctx.lineWidth = 0.75; ctx.stroke();
+      ctx.restore();
+    }
+
     {
       const r = Math.max(8, Math.min(11, plotH / 18));
       const sx = xOf(m.viewT), sy = yOf(elevationAt(sun, m.viewT));
       ctx.save();
+      // See-through where it covers the moon, so the moon stays visible behind it.
+      if (moonDisc) {
+        const d = Math.hypot(sx - moonDisc.x, sy - moonDisc.y), touch = r + moonDisc.r;
+        if (d < touch) ctx.globalAlpha = 0.3 + 0.7 * (d / touch) ** 2;
+      }
       ctx.shadowColor = 'rgba(255,170,0,0.85)';
       ctx.shadowBlur = r * 1.6;
       const g = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r);
@@ -215,41 +240,14 @@ export class DayGraphic {
       ctx.restore();
     }
 
-    if (overlays.moon && m.moon) {
-      const mr = Math.max(7, Math.min(10, plotH / 20));
-      const mp = moonPosition(m.viewT, m.lat, m.lon);
-      ctx.save();
-      ctx.translate(xOf(m.viewT), yOf(mp.elevation));
-      ctx.globalAlpha = mp.elevation < 0 ? 0.5 : 1;
-      ctx.fillStyle = COLORS.moonDark;
-      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowColor = 'rgba(200,220,255,0.7)'; ctx.shadowBlur = mr * 1.2;
-      ctx.fillStyle = COLORS.moonLit;
-      ctx.fill(new Path2D(litPath(mr, moonIllumination(m.viewT), m.lat < 0)));
-      ctx.shadowBlur = 0;
-      // Dark ring + light rim keep the moon readable in front of the sun.
-      ctx.beginPath(); ctx.arc(0, 0, mr + 0.75, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(0,0,0,0.55)'; ctx.lineWidth = 1.5; ctx.stroke();
-      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2);
-      ctx.strokeStyle = 'rgba(225,235,255,0.6)'; ctx.lineWidth = 0.75; ctx.stroke();
-      ctx.restore();
-    }
 
     // Tide: mean sea level on the horizon line, high water up.
     if (overlays.tide && store.tide?.points?.length) {
       const maxAbs = Math.max(30, ...store.tide.points.map((p) => Math.abs(p.level)));
       const yH = (cm) => mid - (cm / (maxAbs * 1.15)) * (plotH / 2);
-      const pts = [];
-      for (let t = start; t <= end; t += 10 * MIN) {
-        const v = store.tideAt(t);
-        pts.push(v ? { x: xOf(t), y: yH(v.level) } : null);
-      }
-      ctx.strokeStyle = COLORS.tide; ctx.lineWidth = 1; ctx.lineJoin = 'round';
-      drawRuns(ctx, pts, (run) => {
-        ctx.beginPath();
-        run.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-        ctx.stroke();
-      });
+      const nodes = withinDay(store.tide.points, start, end, 2 * HOUR).map((p) => ({ t: p.t, x: xOf(p.t), y: yH(p.level) }));
+      ctx.strokeStyle = COLORS.tide; ctx.lineWidth = LINE_W;
+      for (const run of splitGaps(nodes, 3 * HOUR)) strokeSmooth(ctx, run);
       // High/low water times.
       ctx.font = LABEL_FONT_SMALL;
       for (const e of store.tide.extremes.filter((e) => e.t >= start && e.t < end)) {
@@ -265,27 +263,18 @@ export class DayGraphic {
       const maxAbs = Math.max(...store.instants.map((i) => Math.abs(i.temp)));
       const tScale = Math.max(15, Math.ceil(maxAbs * 1.15));
       const yT = (c) => mid - (c / tScale) * (plotH / 2);
-      const pts = [];
-      for (let t = start; t <= end; t += 10 * MIN) {
-        const v = store.instantAt(t);
-        pts.push(v ? { x: xOf(t), y: yT(v.temp), c: v.temp } : null);
-      }
-      const stroke = (color, clipTop, clipH) => {
-        ctx.save();
-        ctx.beginPath(); ctx.rect(L, clipTop, pw, clipH); ctx.clip();
-        ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.lineJoin = 'round';
-        drawRuns(ctx, pts, (run) => {
-          ctx.beginPath();
-          run.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-          ctx.stroke();
-        });
-        ctx.restore();
-      };
-      stroke(COLORS.warm, T, mid - T);
-      stroke(COLORS.cold, mid, B - mid);
+      // Smooth curve through the actual data points (hourly / 6-hourly), one stroke whose
+      // colour switches at the 0 °C line — no seams, even thickness.
+      const nodes = withinDay(store.instants, start, end, 7 * HOUR).map((p) => ({ t: p.t, x: xOf(p.t), y: yT(p.temp), c: p.temp }));
+      const grad = ctx.createLinearGradient(0, T, 0, B);
+      const f0 = (mid - T) / plotH;
+      grad.addColorStop(0, COLORS.warm); grad.addColorStop(f0, COLORS.warm);
+      grad.addColorStop(f0, COLORS.cold); grad.addColorStop(1, COLORS.cold);
+      ctx.strokeStyle = grad; ctx.lineWidth = LINE_W;
+      for (const run of splitGaps(nodes, 7 * HOUR)) strokeSmooth(ctx, run);
 
-      // Day's high and low.
-      const valid = pts.filter(Boolean);
+      // Day's high and low (data points inside the day).
+      const valid = nodes.filter((p) => p.t >= start && p.t < end);
       if (valid.length > 1) {
         const hi = valid.reduce((a, b) => (b.c > a.c ? b : a));
         const lo = valid.reduce((a, b) => (b.c < a.c ? b : a));
@@ -364,6 +353,48 @@ export class DayGraphic {
 
     this.canvas.setAttribute('aria-valuetext', clock(m.viewT));
   }
+}
+
+/** Data points inside [start, end] plus one neighbour on each side (within `reach`) so curves run to the edges. */
+function withinDay(points, start, end, reach) {
+  const out = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i];
+    if (p.t >= start && p.t <= end) out.push(p);
+    else if (p.t < start && points[i + 1]?.t >= start && start - p.t <= reach) out.push(p);
+    else if (p.t > end && points[i - 1]?.t <= end && p.t - end <= reach) { out.push(p); break; }
+  }
+  return out;
+}
+
+function splitGaps(nodes, maxGap) {
+  const runs = [[]];
+  for (const n of nodes) {
+    const run = runs[runs.length - 1];
+    if (run.length && n.t - run[run.length - 1].t > maxGap) runs.push([n]); else run.push(n);
+  }
+  return runs.filter((r) => r.length > 1);
+}
+
+/** Monotone cubic (Fritsch–Carlson) through the points: smooth, never overshoots the data. */
+function strokeSmooth(ctx, p) {
+  const n = p.length;
+  const m = [];
+  for (let i = 0; i < n - 1; i++) m.push((p[i + 1].y - p[i].y) / (p[i + 1].x - p[i].x));
+  const tg = p.map((_, i) => (i === 0 ? m[0] : i === n - 1 ? m[n - 2] : m[i - 1] * m[i] <= 0 ? 0 : (m[i - 1] + m[i]) / 2));
+  for (let i = 0; i < n - 1; i++) {
+    if (m[i] === 0) { tg[i] = tg[i + 1] = 0; continue; }
+    const a = tg[i] / m[i], b = tg[i + 1] / m[i], h = a * a + b * b;
+    if (h > 9) { const k = 3 / Math.sqrt(h); tg[i] = k * a * m[i]; tg[i + 1] = k * b * m[i]; }
+  }
+  ctx.beginPath();
+  ctx.moveTo(p[0].x, p[0].y);
+  for (let i = 0; i < n - 1; i++) {
+    const dx = (p[i + 1].x - p[i].x) / 3;
+    ctx.bezierCurveTo(p[i].x + dx, p[i].y + tg[i] * dx, p[i + 1].x - dx, p[i + 1].y - tg[i + 1] * dx, p[i + 1].x, p[i + 1].y);
+  }
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.stroke();
 }
 
 /** Draw contiguous non-null runs of points. */
