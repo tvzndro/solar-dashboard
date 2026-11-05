@@ -2,10 +2,10 @@
 // "what is the value at time t, and where did it come from?".
 
 import { HOUR, MIN } from '../time.js';
-import { fetchMet, fetchNowcast, fetchOpenMeteo, fetchKp, fetchKp27 } from './fetchers.js';
+import { fetchMet, fetchNowcast, fetchOpenMeteo, fetchKp, fetchKp27, fetchKartverket, fetchMarine } from './fetchers.js';
 import { mockData } from './mock.js';
 
-const REFRESH = { met: 15 * MIN, openmeteo: 30 * MIN, nowcast: 5 * MIN, kp: 30 * MIN, kp27: 6 * HOUR };
+const REFRESH = { met: 15 * MIN, openmeteo: 30 * MIN, nowcast: 5 * MIN, kp: 30 * MIN, kp27: 6 * HOUR, kartverket: 30 * MIN, marine: 3 * HOUR };
 const RETRY = 2 * MIN;
 
 /** Fraction of precipitation falling as snow, by air temperature. */
@@ -54,6 +54,9 @@ export class DataStore {
       // MET's radar nowcast only covers the Nordics; elsewhere it fails without CORS
       // headers, so don't ask (Open-Meteo's 15-minutely data is used instead).
       ...(lat > 52.5 && lat < 75 && lon > -15 && lon < 37 ? { nowcast: () => fetchNowcast(lat, lon, this.abort.signal) } : {}),
+      // Tides: Kartverket covers Norway (incl. Svalbard); Open-Meteo Marine is the global fallback.
+      ...(lat > 57 && lat < 82 && lon > 2 && lon < 33 ? { kartverket: () => fetchKartverket(lat, lon, this.abort.signal, now()) } : {}),
+      marine: () => fetchMarine(lat, lon, this.abort.signal),
       kp: () => fetchKp(this.abort.signal),
       kp27: () => fetchKp27(this.abort.signal),
     };
@@ -155,6 +158,17 @@ export class DataStore {
       }
       this.kp = blocks;
     }
+    // Tides: prefer Kartverket when it has data for this spot.
+    const { kartverket: kv, marine } = this.raw;
+    const pick = mock?.tide ? { ...mock.tide, src: 'mock' }
+      : kv && !kv.none ? { ...kv, src: 'kartverket' }
+      : marine && !marine.none ? { ...marine, src: 'marine' } : null;
+    this.tide = pick;
+    for (const [name, d] of [['kartverket', kv], ['marine', marine]]) {
+      const s = this.sources[name];
+      if (s && d) s.note = d.none ? d.none : pick?.src !== name ? 'notUsed' : null;
+    }
+
     this.timezone = om?.timezone || this.timezone;
     this.onUpdate();
   }
@@ -197,6 +211,25 @@ export class DataStore {
       srcs.add(p.snowSrc === 'derived' ? p.src : p.snowSrc);
     }
     return { cm: sum, complete: covered >= (to - from) - MIN, srcs: [...srcs] };
+  }
+
+  /** Interpolated water level (cm vs mean sea level) at t, or null. */
+  tideAt(t) {
+    const a = this.tide?.points;
+    if (!a?.length || t < a[0].t || t > a[a.length - 1].t) return null;
+    let lo = 0, hi = a.length - 1;
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (a[mid].t <= t) lo = mid; else hi = mid; }
+    const p = a[lo], q = a[hi];
+    if (q.t - p.t > 3 * HOUR) return null;
+    const f = q.t === p.t ? 0 : (t - p.t) / (q.t - p.t);
+    return { t, level: p.level + (q.level - p.level) * f, tide: p.tide + (q.tide - p.tide) * f,
+      kind: f < 0.5 ? p.kind : q.kind, rising: q.level > p.level, src: this.tide.src };
+  }
+
+  /** Next high and low tide after t. */
+  nextTides(t) {
+    const ex = this.tide?.extremes || [];
+    return { high: ex.find((e) => e.t > t && e.type === 'high') || null, low: ex.find((e) => e.t > t && e.type === 'low') || null };
   }
 
   get loading() { return Object.values(this.sources).some((s) => s.status === 'loading'); }

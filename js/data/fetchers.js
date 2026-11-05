@@ -141,3 +141,73 @@ export async function geocode(query, lang, signal) {
     detail: [r.admin1, r.country].filter(Boolean).join(', '),
   }));
 }
+
+// ── Tides ────────────────────────────────────────────────────────────────
+// Norwegian coast: Kartverket (official; observations, astronomical prediction,
+// and weather-adjusted forecast, plus high/low table). Elsewhere: Open-Meteo
+// Marine sea level (model, hourly). Levels are cm relative to mean sea level.
+
+const fmtUtc = (ms) => new Date(ms).toISOString().slice(0, 16);
+
+export function kartverketUrl(lat, lon, from, to, datatype) {
+  return `https://vannstand.kartverket.no/tideapi.php?tide_request=locationdata&lat=${coord(lat)}&lon=${coord(lon)}`
+    + `&fromtime=${fmtUtc(from)}&totime=${fmtUtc(to)}&datatype=${datatype}&refcode=msl&lang=en&interval=10&dst=0&tzone=0`;
+}
+
+async function getXml(url, signal) {
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return new DOMParser().parseFromString(await res.text(), 'text/xml');
+}
+
+export async function fetchKartverket(lat, lon, signal, now = Date.now()) {
+  const from = now - 3 * 24 * HOUR, to = now + 11 * 24 * HOUR;
+  const url = kartverketUrl(lat, lon, from, to, 'all');
+  const [doc, tab] = await Promise.all([
+    getXml(url, signal),
+    getXml(kartverketUrl(lat, lon, from, to, 'tab'), signal),
+  ]);
+  const nodata = doc.querySelector('nodata');
+  if (nodata) return { url, none: nodata.getAttribute('info') || 'no data' };
+  const series = (type) => [...doc.querySelectorAll(`data[type="${type}"] waterlevel`)]
+    .map((w) => ({ t: Date.parse(w.getAttribute('time')), level: +w.getAttribute('value') }));
+  const pred = series('prediction'), obs = series('observation'), fc = series('forecast');
+  const byT = (arr) => new Map(arr.map((p) => [p.t, p.level]));
+  const obsM = byT(obs), fcM = byT(fc);
+  // Actual water level: observation where measured, weather-adjusted forecast where available, else astronomical tide.
+  const points = pred.map((p) => {
+    if (obsM.has(p.t)) return { t: p.t, level: obsM.get(p.t), tide: p.level, kind: 'observed' };
+    if (fcM.has(p.t)) return { t: p.t, level: fcM.get(p.t), tide: p.level, kind: 'forecast' };
+    return { t: p.t, level: p.level, tide: p.level, kind: 'prediction' };
+  });
+  const extremes = [...tab.querySelectorAll('waterlevel')].map((w) => ({
+    t: Date.parse(w.getAttribute('time')), level: +w.getAttribute('value'), type: w.getAttribute('flag'),
+  }));
+  const station = doc.querySelector('location')?.getAttribute('name') || null;
+  return { url, station, points, extremes };
+}
+
+export function marineUrl(lat, lon) {
+  return `https://marine-api.open-meteo.com/v1/marine?latitude=${lat}&longitude=${lon}`
+    + '&hourly=sea_level_height_msl&past_days=3&forecast_days=11&timeformat=unixtime&cell_selection=sea';
+}
+
+export async function fetchMarine(lat, lon, signal) {
+  const url = marineUrl(lat, lon);
+  const json = await getJson(url, signal);
+  const h = json.hourly || {};
+  const points = (h.time || []).map((tt, i) => ({ t: tt * 1000, level: h.sea_level_height_msl[i] == null ? null : h.sea_level_height_msl[i] * 100 }))
+    .filter((p) => p.level != null).map((p) => ({ ...p, tide: p.level, kind: 'model' }));
+  if (points.length < 24) return { url, none: 'no sea level data here' };
+  // High/low: local extrema refined with a parabola through the neighbours.
+  const extremes = [];
+  for (let i = 1; i < points.length - 1; i++) {
+    const a = points[i - 1].level, b = points[i].level, c = points[i + 1].level;
+    const isHigh = b > a && b >= c, isLow = b < a && b <= c;
+    if (!isHigh && !isLow) continue;
+    const denom = a - 2 * b + c;
+    const off = denom ? 0.5 * (a - c) / denom : 0;
+    extremes.push({ t: points[i].t + off * HOUR, level: b - 0.25 * (a - c) * off, type: isHigh ? 'high' : 'low' });
+  }
+  return { url, station: null, points, extremes };
+}

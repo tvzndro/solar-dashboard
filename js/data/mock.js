@@ -41,5 +41,18 @@ export function mockData(now) {
     const k = Math.min(9, Math.max(0, 1 + 6.5 * smooth(t / HOUR, 20, 8) ** 1.3));
     kp.push({ from: t, to: t + 3 * HOUR, kp: Math.round(k * 3) / 3, kind: t + 3 * HOUR < now ? 'observed' : 'predicted' });
   }
-  return { instants, precip, nowcast: { temp: -2, steps, stepMs: 5 * MIN }, kp };
+  // Semi-diurnal tide (M2 + S2) with a little weather noise.
+  const points = [];
+  for (let t = h0 - 80 * HOUR; t <= h0 + 270 * HOUR; t += 10 * MIN) {
+    const hr = t / HOUR;
+    const tide = 95 * Math.cos(2 * Math.PI * hr / 12.42) + 30 * Math.cos(2 * Math.PI * hr / 12 + 1);
+    points.push({ t, level: tide + 25 * (smooth(hr, 30, 9) - 0.5), tide, kind: t < now ? 'observed' : 'forecast' });
+  }
+  const extremes = [];
+  for (let i = 1; i < points.length - 1; i++) {
+    const [a, b, c] = [points[i - 1].tide, points[i].tide, points[i + 1].tide];
+    if (b > a && b >= c) extremes.push({ t: points[i].t, level: b, type: 'high' });
+    if (b < a && b <= c) extremes.push({ t: points[i].t, level: b, type: 'low' });
+  }
+  return { instants, precip, nowcast: { temp: -2, steps, stepMs: 5 * MIN }, kp, tide: { station: 'Mock harbour', points, extremes } };
 }

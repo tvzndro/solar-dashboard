@@ -121,6 +121,7 @@ p.sub { margin: 6px 0 0; }
 .moon-icon { width: 30px; height: 30px; margin-left: auto; flex: none; }
 .moon-dark { fill: #2a2f40; stroke: #4a5068; stroke-width: 1; }
 .moon-lit { fill: #eef1f8; }
+.chip-tide.on::before { background: #c4a7ff; height: 2px; }
 .chip-moon.on::before { background: #dde4f5; border-radius: 50%; }
 .welcome p { color: var(--muted); }
 body.no-location .graphic, body.no-location .legend, body.no-location .days { display: none; }

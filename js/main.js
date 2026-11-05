@@ -107,7 +107,7 @@ function render() {
 
   // Overlay legend / toggles.
   const legend = $('#legend');
-  const legendHtml = ['sunCurve', 'moon', 'temperature', 'clouds', 'precipitation', 'kp'].map((k) =>
+  const legendHtml = ['sunCurve', 'moon', 'temperature', 'tide', 'clouds', 'precipitation', 'kp'].filter((k) => k !== 'tide' || store.tide).map((k) =>
     `<button type="button" class="chip chip-${k} ${c.overlays[k] ? 'on' : ''}" data-overlay="${k}" aria-pressed="${!!c.overlays[k]}">${t(`ov_${k}`)}</button>`).join('');
   if (legend._html !== legendHtml) { legend.innerHTML = legendHtml; legend._html = legendHtml; legend.setAttribute('aria-label', t('s_overlayLegend')); }
 
@@ -125,6 +125,7 @@ function render() {
   // Snowfall only matters if the loaded data (past days + forecast) ever gets cold enough.
   const hidden = new Set();
   if (!store.instants.some((i) => snowFraction(i.temp) > 0)) hidden.add('snow');
+  if (!store.tide) hidden.add('tide'); // inland: no sea level data
 
   renderCards($('#cards'), {
     hidden, store, sun, moon, viewT, nowT: now, lat, lon, scrubbing, isToday, snowWindow,

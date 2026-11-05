@@ -23,7 +23,8 @@ const COLORS = {
   curve: 'rgba(255,255,255,0.5)',
   moonCurve: 'rgba(205,220,255,0.38)',
   moonLit: '#eef1f8',
-  moonDark: 'rgba(28,32,48,0.92)',
+  moonDark: 'rgba(28,32,48,0.75)',
+  tide: '#c4a7ff',
   label: '#8a8a8a',
   warm: '#ff9a5c',
   cold: '#8fdcff',
@@ -188,6 +189,67 @@ export class DayGraphic {
       ctx.setLineDash([]);
     }
 
+    // Moon and sun discs follow their curves and slide out of the frame (clipped) when off-scale.
+    if (overlays.moon && m.moon) {
+      const mr = Math.max(7, Math.min(10, plotH / 20));
+      const mp = moonPosition(m.viewT, m.lat, m.lon);
+      ctx.save();
+      ctx.translate(xOf(m.viewT), yOf(mp.elevation));
+      ctx.globalAlpha = mp.elevation < 0 ? 0.5 : 1;
+      ctx.fillStyle = COLORS.moonDark;
+      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowColor = 'rgba(200,220,255,0.7)'; ctx.shadowBlur = mr * 1.2;
+      ctx.fillStyle = COLORS.moonLit;
+      ctx.fill(new Path2D(litPath(mr, moonIllumination(m.viewT), m.lat < 0)));
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(220,230,255,0.35)'; ctx.lineWidth = 0.75;
+      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    }
+    {
+      const r = Math.max(8, Math.min(11, plotH / 18));
+      const sx = xOf(m.viewT), sy = yOf(elevationAt(sun, m.viewT));
+      ctx.save();
+      ctx.shadowColor = 'rgba(255,170,0,0.85)';
+      ctx.shadowBlur = r * 1.6;
+      const g = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r);
+      g.addColorStop(0, '#fff1a8');
+      g.addColorStop(0.45, '#ffc21a');
+      g.addColorStop(1, '#ff9500');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+
+    // Tide: mean sea level on the horizon line, high water up.
+    let tideDot = null;
+    if (overlays.tide && store.tide?.points?.length) {
+      const maxAbs = Math.max(30, ...store.tide.points.map((p) => Math.abs(p.level)));
+      const yH = (cm) => mid - (cm / (maxAbs * 1.15)) * (plotH / 2);
+      const pts = [];
+      for (let t = start; t <= end; t += 10 * MIN) {
+        const v = store.tideAt(t);
+        pts.push(v ? { x: xOf(t), y: yH(v.level) } : null);
+      }
+      ctx.strokeStyle = COLORS.tide; ctx.lineWidth = 1; ctx.lineJoin = 'round';
+      drawRuns(ctx, pts, (run) => {
+        ctx.beginPath();
+        run.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        ctx.stroke();
+      });
+      // High/low water times.
+      ctx.font = '10px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+      ctx.fillStyle = COLORS.tide;
+      for (const e of store.tide.extremes.filter((e) => e.t >= start && e.t < end)) {
+        const x = xOf(e.t), y = yH(store.tideAt(e.t)?.level ?? e.level);
+        ctx.textAlign = x < L + 20 ? 'left' : x > R - 20 ? 'right' : 'center';
+        ctx.textBaseline = e.type === 'high' ? 'bottom' : 'top';
+        ctx.fillText(clock(e.t), x, Math.min(B - 12, Math.max(T + 12, e.type === 'high' ? y - 3 : y + 3)));
+      }
+      const v = store.tideAt(m.viewT);
+      if (v) tideDot = { x: xOf(m.viewT), y: yH(v.level) };
+    }
+
     // Temperature: the horizon doubles as 0 °C (freezing), warm above, cold below.
     let tempDot = null;
     if (overlays.temperature && store.instants.length) {
@@ -203,7 +265,6 @@ export class DayGraphic {
         ctx.save();
         ctx.beginPath(); ctx.rect(L, clipTop, pw, clipH); ctx.clip();
         ctx.strokeStyle = color; ctx.lineWidth = 1; ctx.lineJoin = 'round';
-        ctx.shadowColor = COLORS.tempShadow; ctx.shadowBlur = 3;
         drawRuns(ctx, pts, (run) => {
           ctx.beginPath();
           run.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
@@ -296,46 +357,15 @@ export class DayGraphic {
       ctx.fillText(label, lx + tw / 2, B + 7);
     }
 
+    if (tideDot) {
+      ctx.fillStyle = COLORS.tide; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(tideDot.x, tideDot.y, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
     if (tempDot) {
       ctx.fillStyle = tempDot.c >= 0 ? COLORS.warm : COLORS.cold;
       ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(tempDot.x, tempDot.y, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
     }
-
-    // The moon disc with its current phase; pinned to the edge like the sun, dimmed below the horizon.
-    if (overlays.moon && m.moon) {
-      const mr = Math.max(7, Math.min(10, plotH / 20));
-      const mp = moonPosition(m.viewT, m.lat, m.lon);
-      const mx = Math.min(R - mr * 0.4, Math.max(L + mr * 0.4, xOf(m.viewT)));
-      const my = Math.min(B - mr, Math.max(T + mr, yOf(mp.elevation)));
-      ctx.save();
-      ctx.translate(mx, my);
-      ctx.globalAlpha = mp.elevation < 0 ? 0.45 : 1;
-      ctx.fillStyle = COLORS.moonDark;
-      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowColor = 'rgba(200,220,255,0.7)'; ctx.shadowBlur = mr * 1.2;
-      ctx.fillStyle = COLORS.moonLit;
-      ctx.fill(new Path2D(litPath(mr, moonIllumination(m.viewT), m.lat < 0)));
-      ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(220,230,255,0.35)'; ctx.lineWidth = 0.75;
-      ctx.beginPath(); ctx.arc(0, 0, mr, 0, Math.PI * 2); ctx.stroke();
-      ctx.restore();
-    }
-
-    // The sun disc, pinned to the edge when far below (or above) the frame.
-    const r = Math.max(8, Math.min(11, plotH / 18));
-    const sx = Math.min(R - r * 0.4, Math.max(L + r * 0.4, xOf(m.viewT)));
-    const sy = Math.min(B - r, Math.max(T + r, yOf(elevationAt(sun, m.viewT))));
-    ctx.save();
-    ctx.shadowColor = 'rgba(255,170,0,0.85)';
-    ctx.shadowBlur = r * 1.6;
-    const g = ctx.createRadialGradient(sx - r * 0.3, sy - r * 0.3, r * 0.1, sx, sy, r);
-    g.addColorStop(0, '#fff1a8');
-    g.addColorStop(0.45, '#ffc21a');
-    g.addColorStop(1, '#ff9500');
-    ctx.fillStyle = g;
-    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
-    ctx.restore();
 
     this.canvas.setAttribute('aria-valuetext', clock(m.viewT));
   }

@@ -208,13 +208,32 @@ function snowCard(ctx) {
     <p class="note">${esc(t('snowNote'))}</p>`;
 }
 
+function tideCard(ctx) {
+  const v = makeV(ctx);
+  const { store, viewT } = ctx;
+  const cur = store.tideAt(viewT);
+  if (!cur) return `<p class="empty">${esc(t('noData'))}</p>`;
+  const { high, low } = store.nextTides(viewT);
+  const ext = (e) => (e ? v(`${f.clock(e.t)} · ${f.tideLevel(e.level)}`, cur.src, f.shortDay(e.t)) : '—');
+  const nextFirst = high && low && low.t < high.t ? [['nextLow', low], ['nextHigh', high]] : [['nextHigh', high], ['nextLow', low]];
+  const surge = cur.level - cur.tide;
+  const station = store.tide.station;
+  return `
+    <div class="big">${v(f.tideLevel(cur.level), cur.src, `${t(`tide_${cur.kind}`)} · ${t('relMsl')}`)}
+      <span class="trend">${cur.rising ? '↗' : '↘'} ${esc(t(cur.rising ? 'tideRising' : 'tideFalling'))}</span></div>
+    ${nextFirst.map(([k, e]) => row(t(k), ext(e))).join('')}
+    ${Math.abs(surge) >= 1 ? row(t('weatherEffect'), v(f.tideLevel(surge), cur.src, t('weatherEffectHint'))) : ''}
+    <p class="sub">${esc(t('relMsl'))}${station ? ` · ${esc(station)}` : ''} · ${esc(t(`src_${cur.src}`))}</p>`;
+}
+
 function sourcesCard(ctx) {
   const entries = Object.entries(ctx.store.sources);
   const items = entries.map(([name, s]) => {
     const status = s.status === 'ok' ? `${t('fetched')} ${f.clock(s.fetchedAt)}`
       : s.status === 'loading' ? t('loading')
       : `${t('failed')}: ${s.error}${s.fetchedAt ? ` (${t('fetched')} ${f.clock(s.fetchedAt)})` : ''}`;
-    return `<li class="src-${s.status}"><b>${esc(t(`src_${name}`))}</b><br><span class="sub">${esc(status)}</span>
+    const note = s.note ? ` · ${t(s.note)}` : '';
+    return `<li class="src-${s.status}"><b>${esc(t(`src_${name}`))}</b><br><span class="sub">${esc(status + note)}</span>
       ${s.url ? `<br><a href="${esc(s.url)}" target="_blank" rel="noopener" class="sub">${esc(s.url.replace(/^https:\/\//, '').slice(0, 60))}…</a>` : ''}</li>`;
   });
   items.push(`<li><b>${esc(t('src_sun'))}</b><br><span class="sub">NOAA solar position algorithm</span></li>`);
@@ -223,7 +242,7 @@ function sourcesCard(ctx) {
 
 export const CARDS = {
   sun: sunCard, moon: moonCard, weather: weatherCard, wind: windCard, outlook: outlookCard,
-  aurora: auroraCard, snow: snowCard, sources: sourcesCard,
+  aurora: auroraCard, tide: tideCard, snow: snowCard, sources: sourcesCard,
 };
 
 export function renderCards(container, ctx, layout) {

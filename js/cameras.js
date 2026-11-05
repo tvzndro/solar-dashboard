@@ -18,14 +18,14 @@ export function youtubeEmbedUrl(input) {
 
 // ── Keeping live streams near live ──────────────────────────────────────
 // YouTube sometimes starts a live embed far back in its DVR buffer, and a
-// paused or stalled stream falls behind. We measure the real delay with
-// getMediaReferenceTime() (wall-clock time of the frame on screen) and, only
-// when it is well over a minute, seek forward once to ~30 s behind live.
-// Normal live latency is ~15–25 s, so ordinary playback is never touched.
+// stalled stream falls behind. We measure the real delay with
+// getMediaReferenceTime() (wall-clock time of the frame on screen) and, when it
+// exceeds normal live latency (~15–25 s), seek past the end: YouTube clamps that
+// to the live edge. Streams out of view are *stopped* (not paused), because a
+// stopped live stream restarts at the live edge while a paused one resumes late.
 // (getDuration() is NOT usable for this: on live streams it is frozen and can
 // be off by an hour, which caused seek loops — buffering and flicker.)
-const MAX_LAG = 90;          // s behind live before we step in
-const TARGET_LAG = 30;       // s behind live to land at (safely inside the buffer)
+const MAX_LAG = 40;          // s behind real time before we step in (normal latency is 15–25 s)
 const SETTLE_MS = 8_000;     // let playback settle before measuring
 const COOLDOWN_MS = 180_000; // at most one correction per stream per 3 min
 const MAX_FAILURES = 3;      // stop trying if corrections don't stick
@@ -66,7 +66,7 @@ function keepLive(item) {
   if (item.failures >= MAX_FAILURES || Date.now() - (item.lastFix || 0) < COOLDOWN_MS) return;
   item.lastFix = Date.now();
   item.failures = (item.failures || 0) + 1;
-  try { p.seekTo(p.getCurrentTime() + (lag - TARGET_LAG), true); } catch { /* player gone */ }
+  try { p.seekTo(p.getCurrentTime() + lag + 60, true); } catch { /* player gone */ }
 }
 
 function scheduleKeepLive(item) {
@@ -149,11 +149,11 @@ export class Cameras {
     this.el.innerHTML = parts.join('');
     this.el.hidden = !parts.length;
 
-    // Streams: pause when idle, play again (at the live edge) when seen.
+    // Streams: stop when idle, play again (at the live edge) when seen.
     for (const fig of this.el.querySelectorAll('.stream')) {
       const item = {
         el: fig, inView: false, active: true, player: null,
-        suspend: () => { try { item.player?.pauseVideo(); } catch { /* not ready */ } },
+        suspend: () => { try { item.player?.stopVideo(); } catch { /* not ready */ } },
         resume: () => { item.failures = 0; try { item.player?.playVideo(); } catch { /* not ready */ } },
       };
       this.items.push(item);
@@ -201,7 +201,7 @@ export class Cameras {
     for (const item of items) {
       item.player = new YT.Player(item.el.querySelector('iframe'), {
         events: {
-          onReady: (e) => { if (!item.active) e.target.pauseVideo(); },
+          onReady: (e) => { if (!item.active) e.target.stopVideo(); },
           onStateChange: (e) => { if (e.data === YT.PlayerState.PLAYING) scheduleKeepLive(item); },
         },
       });

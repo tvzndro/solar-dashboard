@@ -30,7 +30,7 @@ Everything is saved in that browser (localStorage). To set up another machine, u
 
 Add YouTube streams in settings: a video ID, a channel ID (UC…) or a URL. A channel ID always shows that channel's current live stream. Streams autoplay muted, because browsers block autoplay with sound.
 
-Prefer channel IDs: a video ID stops working when the channel restarts its stream. A stream that falls more than 90 s behind live (e.g. after being paused) is moved back to ~30 s behind live. Webcams and streams pause after a minute out of view and resume when scrolled back into view.
+Prefer channel IDs: a video ID stops working when the channel restarts its stream. Streams are kept live: one that falls more than 40 s behind real time (normal YouTube latency is 15–25 s) jumps to the live edge. Webcams and streams stop after a minute out of view and resume, live, when scrolled back into view.
 
 ## Data sources (all keyless, browser-direct)
 
@@ -41,6 +41,8 @@ Prefer channel IDs: a video ID stops working when the channel restarts its strea
 | Next two hours | MET Norway Nowcast (radar, Nordic only), falling back to Open-Meteo 15-minutely |
 | Kp, 3-hourly observed + 3-day forecast | NOAA SWPC |
 | Kp, beyond 3 days (daily max, shown fainter) | NOAA SWPC 27-day outlook |
+| Tides (Norway): observed, forecast incl. weather, high/low | Kartverket sea level API |
+| Tides elsewhere (model) | Open-Meteo Marine |
 | Sun and moon position, phases, rise/set | Computed locally |
 | Place search | Open-Meteo geocoding |
 

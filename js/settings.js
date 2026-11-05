@@ -105,7 +105,7 @@ export class Settings {
           </fieldset>
 
           <fieldset><legend>${esc(t('s_overlays'))}</legend>
-            ${['sunCurve', 'moon', 'temperature', 'clouds', 'precipitation', 'kp'].map((k) => check(`overlays.${k}`, t(`ov_${k}`))).join('')}
+            ${['sunCurve', 'moon', 'temperature', 'tide', 'clouds', 'precipitation', 'kp'].map((k) => check(`overlays.${k}`, t(`ov_${k}`))).join('')}
           </fieldset>
 
           <fieldset><legend>${esc(t('s_cameras'))}</legend>

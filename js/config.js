@@ -10,17 +10,17 @@ export const BUILTIN_DEFAULTS = {
   units: 'metric',
   language: 'en',
   layout: {
-    cards: ['sun', 'moon', 'weather', 'wind', 'outlook', 'aurora', 'snow'].map((id) => ({ id, visible: true })),
+    cards: ['sun', 'moon', 'weather', 'wind', 'outlook', 'aurora', 'tide', 'snow'].map((id) => ({ id, visible: true })),
     showCameras: true,
     showStreams: true,
   },
-  overlays: { sunCurve: true, moon: true, temperature: true, clouds: true, precipitation: true, kp: true },
+  overlays: { sunCurve: true, moon: true, temperature: true, tide: true, clouds: true, precipitation: true, kp: true },
   snowWindowHours: 12,
   cameras: { images: [], streams: [] },
   debug: { showSources: false, mock: false },
 };
 
-export const ALL_CARDS = ['sun', 'moon', 'weather', 'wind', 'outlook', 'aurora', 'snow', 'sources'];
+export const ALL_CARDS = ['sun', 'moon', 'weather', 'wind', 'outlook', 'aurora', 'tide', 'snow', 'sources'];
 
 const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const clone = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(v)));

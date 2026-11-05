@@ -3,6 +3,11 @@
 const STRINGS = {
   en: {
     locale: 'en-GB',
+    card_tide: 'Tide', ov_tide: 'Tide', nextHigh: 'Next high water', nextLow: 'Next low water',
+    tideRising: 'rising', tideFalling: 'falling', relMsl: 'relative to mean sea level',
+    weatherEffect: 'Weather effect', weatherEffectHint: 'water level minus astronomical tide (wind and air pressure)',
+    tide_observed: 'measured', tide_forecast: 'forecast incl. weather', tide_prediction: 'astronomical tide', tide_model: 'ocean model',
+    src_kartverket: 'Kartverket sea level', src_marine: 'Open-Meteo Marine',
     card_moon: 'Moon', moonrise: 'Moonrise', moonset: 'Moonset', illumination: 'Illuminated',
     moonAlwaysUp: 'The moon stays above the horizon all day', moonAlwaysDown: 'The moon stays below the horizon all day',
     moon_new: 'New moon', moon_waxingCrescent: 'Waxing crescent', moon_firstQuarter: 'First quarter', moon_waxingGibbous: 'Waxing gibbous',
@@ -80,6 +85,11 @@ const STRINGS = {
   },
   nb: {
     locale: 'nb-NO',
+    card_tide: 'Tidevann', ov_tide: 'Tidevann', nextHigh: 'Neste høyvann', nextLow: 'Neste lavvann',
+    tideRising: 'stigende', tideFalling: 'synkende', relMsl: 'i forhold til middelvann',
+    weatherEffect: 'Værvirkning', weatherEffectHint: 'vannstand minus astronomisk tidevann (vind og lufttrykk)',
+    tide_observed: 'målt', tide_forecast: 'varsel med værvirkning', tide_prediction: 'astronomisk tidevann', tide_model: 'havmodell',
+    src_kartverket: 'Kartverket vannstand', src_marine: 'Open-Meteo Marine',
     card_moon: 'Måne', moonrise: 'Måneoppgang', moonset: 'Månenedgang', illumination: 'Opplyst',
     moonAlwaysUp: 'Månen er over horisonten hele døgnet', moonAlwaysDown: 'Månen er under horisonten hele døgnet',
     moon_new: 'Nymåne', moon_waxingCrescent: 'Voksende månesigd', moon_firstQuarter: 'Første kvarter', moon_waxingGibbous: 'Voksende måne',

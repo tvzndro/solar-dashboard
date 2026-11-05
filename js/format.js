@@ -32,6 +32,11 @@ export function snow(cm) {
   if (units === 'imperial') return `${num(cm / 2.54, 1)} in`;
   return `${num(cm, cm < 10 ? 1 : 0)} cm`;
 }
+/** Water level, cm relative to mean sea level, signed. */
+export function tideLevel(cm, signed = true) {
+  const v = units === 'imperial' ? `${num(Math.abs(cm) / 30.48, 1)} ft` : `${num(Math.abs(cm))} cm`;
+  return (signed ? (cm > 0.5 ? '+' : cm < -0.5 ? '−' : '') : '') + v;
+}
 export const pct = (p) => `${num(p)} %`;
 export const deg = (d, digits = 0) => `${num(d, digits)}°`;
 
