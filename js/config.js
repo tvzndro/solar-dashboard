@@ -12,7 +12,7 @@ export const BUILTIN_DEFAULTS = {
     showCameras: true,
     showStreams: true,
   },
-  overlays: { sunCurve: true, clouds: true, precipitation: true, kp: true },
+  overlays: { sunCurve: true, temperature: true, clouds: true, precipitation: true, kp: true },
   snowWindowHours: 12,
   cameras: { images: [], streams: [] },
   debug: { showSources: false, mock: false },

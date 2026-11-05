@@ -4,7 +4,7 @@
 
 import { zonedParts, zonedToUtc, MIN, HOUR } from './time.js';
 import { elevationAt } from './sun.js';
-import { clock } from './format.js';
+import { clock, temp as fmtTemp, tempShort } from './format.js';
 
 const COLORS = {
   night: '#060608',
@@ -21,6 +21,9 @@ const COLORS = {
   horizon: 'rgba(255,255,255,0.32)',
   curve: 'rgba(255,255,255,0.5)',
   label: '#8a8a8a',
+  warm: '#ff9a5c',
+  cold: '#8fdcff',
+  tempShadow: 'rgba(0,0,0,0.55)',
 };
 
 const PRECIP_H = 40;
@@ -146,9 +149,8 @@ export class DayGraphic {
     if (overlays.kp && store.kp.length) {
       const maxH = plotH * 0.5;
       const pts = sun.samples.map((s) => {
-        if (s.elev >= -6) return null;
         const k = smoothKp(store, s.t);
-        return k ? { x: xOf(s.t), h: (k.kp / 9) * maxH, rough: k.rough } : null;
+        return k ? { x: xOf(s.t), h: (k.kp / 9) * maxH * darkness(s.elev), rough: k.rough } : null;
       });
       for (const rough of [false, true]) {
         drawRuns(ctx, pts.map((p) => (p && p.rough === rough ? p : null)), (run) => {
@@ -171,6 +173,59 @@ export class DayGraphic {
       ctx.beginPath();
       sun.samples.forEach((s, i) => (i ? ctx.lineTo(xOf(s.t), yOf(s.elev)) : ctx.moveTo(xOf(s.t), yOf(s.elev))));
       ctx.stroke();
+    }
+
+    // Temperature: the horizon doubles as 0 °C (freezing), warm above, cold below.
+    let tempDot = null;
+    if (overlays.temperature && store.instants.length) {
+      const maxAbs = Math.max(...store.instants.map((i) => Math.abs(i.temp)));
+      const tScale = Math.max(15, Math.ceil(maxAbs * 1.15));
+      const yT = (c) => mid - (c / tScale) * (plotH / 2);
+      const pts = [];
+      for (let t = start; t <= end; t += 10 * MIN) {
+        const v = store.instantAt(t);
+        pts.push(v ? { x: xOf(t), y: yT(v.temp), c: v.temp } : null);
+      }
+      const stroke = (color, clipTop, clipH) => {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(L, clipTop, pw, clipH); ctx.clip();
+        ctx.strokeStyle = color; ctx.lineWidth = 1.75; ctx.lineJoin = 'round';
+        ctx.shadowColor = COLORS.tempShadow; ctx.shadowBlur = 3;
+        drawRuns(ctx, pts, (run) => {
+          ctx.beginPath();
+          run.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+          ctx.stroke();
+        });
+        ctx.restore();
+      };
+      stroke(COLORS.warm, T, mid - T);
+      stroke(COLORS.cold, mid, B - mid);
+
+      // Day's high and low.
+      const valid = pts.filter(Boolean);
+      if (valid.length > 1) {
+        const hi = valid.reduce((a, b) => (b.c > a.c ? b : a));
+        const lo = valid.reduce((a, b) => (b.c < a.c ? b : a));
+        ctx.font = '10px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+        ctx.shadowColor = COLORS.tempShadow; ctx.shadowBlur = 3;
+        for (const [p, above] of [[hi, true], [lo, false]]) {
+          if (hi === lo && !above) continue;
+          ctx.fillStyle = p.c >= 0 ? COLORS.warm : COLORS.cold;
+          ctx.textAlign = p.x < L + 20 ? 'left' : p.x > R - 20 ? 'right' : 'center';
+          ctx.textBaseline = above ? 'bottom' : 'top';
+          const y = Math.min(B - 12, Math.max(T + 12, above ? p.y - 4 : p.y + 4));
+          ctx.fillText(tempShort(p.c), p.x, y);
+        }
+        ctx.shadowBlur = 0;
+      }
+      // Freezing-point tag on the horizon line.
+      ctx.font = '10px ui-monospace, "SF Mono", Menlo, Consolas, monospace';
+      ctx.fillStyle = 'rgba(255,255,255,0.45)';
+      ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+      ctx.fillText(fmtTemp(0), R - 4, mid - 2);
+
+      const v = store.instantAt(m.viewT);
+      if (v) tempDot = { x: xOf(m.viewT), y: yT(v.temp), c: v.temp };
     }
     ctx.restore();
 
@@ -228,6 +283,12 @@ export class DayGraphic {
       ctx.fillText(label, lx + tw / 2, B + 7);
     }
 
+    if (tempDot) {
+      ctx.fillStyle = tempDot.c >= 0 ? COLORS.warm : COLORS.cold;
+      ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(tempDot.x, tempDot.y, 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    }
+
     // The sun disc, pinned to the edge when far below (or above) the frame.
     const r = Math.max(8, Math.min(11, plotH / 18));
     const sx = Math.min(R - r * 0.4, Math.max(L + r * 0.4, xOf(m.viewT)));
@@ -255,6 +316,12 @@ function drawRuns(ctx, pts, fn) {
     else if (run.length) { if (run.length > 1) fn(run); run = []; }
   }
   if (run.length > 1) fn(run);
+}
+
+/** 0 in daylight → 1 when dark enough for aurora; eases across −3° … −9° (centred on −6°). */
+function darkness(elev) {
+  const f = Math.min(1, Math.max(0, (-3 - elev) / 6));
+  return f * f * (3 - 2 * f);
 }
 
 /** Kp at t with short ramps between 3-hour blocks. */

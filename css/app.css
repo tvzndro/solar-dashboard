@@ -83,6 +83,7 @@ button.link { background: none; border: 0; padding: 0 4px; color: var(--accent);
 .chip.on { color: var(--text); }
 .chip.on::before { opacity: 1; }
 .chip-sunCurve.on::before { background: #fff; height: 2px; }
+.chip-temperature.on::before { background: linear-gradient(#ff9a5c 50%, #8fdcff 50%); height: 3px; }
 .chip-clouds.on::before { background: #777; }
 .chip-precipitation.on::before { background: #0a84c8; }
 .chip-kp.on::before { background: #10b950; }

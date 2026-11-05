@@ -21,6 +21,7 @@
   },
   "overlays": {
     "sunCurve": true,
+    "temperature": true,
     "clouds": true,
     "precipitation": true,
     "kp": true

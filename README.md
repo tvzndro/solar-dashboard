@@ -33,6 +33,8 @@ Open tabs pick up a changed `config.json` within about 30 minutes, or straight a
 
 Add YouTube streams under `cameras.streams` as `{ "name": "…", "youtube": "<video ID | channel ID (UC…) | URL>" }`. A channel ID always shows that channel's current live stream. Streams autoplay muted, because browsers block autoplay with sound.
 
+Prefer channel IDs: a video ID stops working when the channel restarts its stream, and an ended stream plays as a recording from wherever YouTube resumes it. The dashboard keeps live streams at the live edge: it jumps to live when playback starts or the tab regains focus, and if a stream falls more than 90 s behind.
+
 ## Data sources (all keyless, browser-direct)
 
 | What | Source |

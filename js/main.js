@@ -98,7 +98,7 @@ function render() {
 
   // Overlay legend / toggles.
   const legend = $('#legend');
-  const legendHtml = ['sunCurve', 'clouds', 'precipitation', 'kp'].map((k) =>
+  const legendHtml = ['sunCurve', 'temperature', 'clouds', 'precipitation', 'kp'].map((k) =>
     `<button type="button" class="chip chip-${k} ${c.overlays[k] ? 'on' : ''}" data-overlay="${k}" aria-pressed="${!!c.overlays[k]}">${t(`ov_${k}`)}</button>`).join('');
   if (legend._html !== legendHtml) { legend.innerHTML = legendHtml; legend._html = legendHtml; legend.setAttribute('aria-label', t('s_overlayLegend')); }
 

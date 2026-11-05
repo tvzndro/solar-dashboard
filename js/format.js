@@ -22,6 +22,7 @@ export function num(v, digits = 0) {
 
 export const temp = (c) => (units === 'imperial' ? `${num(c * 9 / 5 + 32)} °F` : `${num(c)} °C`);
 export const tempPrecise = (c) => (units === 'imperial' ? `${num(c * 9 / 5 + 32)} °F` : `${num(c, 1)} °C`);
+export const tempShort = (c) => `${num(units === 'imperial' ? c * 9 / 5 + 32 : c)}°`;
 export const speed = (ms) => (units === 'imperial' ? `${num(ms * 2.23694)} mph` : `${num(ms, ms < 10 ? 1 : 0)} m/s`);
 export function precip(mm, digits) {
   if (units === 'imperial') return `${num(mm / 25.4, digits ?? 2)} in`;
