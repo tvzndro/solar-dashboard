@@ -17,12 +17,26 @@ export class Settings {
     this.config = config;
     this.searchAbort = null;
     this.searchTimer = null;
-    this.catalogUI = { radius: 25, query: '', more: false }; // camera picker state (not saved)
+    this.catalogUI = { radius: 25, query: '', more: false, open: {} }; // camera picker state (not saved)
     dialog.addEventListener('click', (e) => this.#onClick(e));
+    dialog.addEventListener('toggle', (e) => {
+      const g = e.target.dataset?.group;
+      if (g) this.catalogUI.open[g] = e.target.open;
+    }, true);
+    // Larger preview while hovering (or tapping) a camera thumbnail.
+    dialog.addEventListener('mouseover', (e) => { const img = e.target.closest?.('.cat-list img'); if (img) this.#preview(img); });
+    dialog.addEventListener('mouseout', (e) => { if (e.target.closest?.('.cat-list img')) this.#preview(null); });
+    dialog.addEventListener('click', (e) => {
+      const img = e.target.closest?.('.cat-list img');
+      if (img) this.#preview(this.previewFor === img ? null : img);
+      else if (this.previewFor) this.#preview(null);
+    });
+    dialog.addEventListener('close', () => this.#preview(null));
     dialog.addEventListener('change', (e) => this.#onChange(e));
     dialog.addEventListener('input', (e) => {
       if (e.target.matches('[data-search]')) this.#search(e.target.value);
       if (e.target.matches('[data-catalog-query]')) {
+        if (!this.catalogUI.query && e.target.value) this.catalogUI.open = { stream: true, image: true };
         this.catalogUI.query = e.target.value; this.catalogUI.more = false;
         clearTimeout(this.catalogTimer); this.catalogTimer = setTimeout(() => this.#renderCatalog(), 150);
       }
@@ -34,7 +48,11 @@ export class Settings {
     });
   }
 
-  open() { this.#build(); this.dlg.showModal(); }
+  open() {
+    this.catalogUI.open = {}; // camera lists start minimised
+    this.#build();
+    this.dlg.showModal();
+  }
 
   get isOpen() { return this.dlg.open; }
 
@@ -339,18 +357,21 @@ export class Settings {
       const thumb = cam.kind === 'stream'
         ? `https://i.ytimg.com/vi/${videoIdOf(cam.youtube)}/mqdefault_live.jpg`
         : cam.image;
+      const full = cam.kind === 'stream' ? `https://i.ytimg.com/vi/${videoIdOf(cam.youtube)}/maxresdefault_live.jpg` : cam.image;
       const added = this.#isAdded(cam);
       const where = [cam.municipality, cam.distance != null ? `${cam.distance < 10 ? cam.distance.toFixed(1) : Math.round(cam.distance)} km` : null].filter(Boolean).join(' · ');
       const data = esc(JSON.stringify({ kind: cam.kind, name: cam.name, youtube: cam.youtube, image: cam.image }));
       return `<li class="${added ? 'added' : ''}">
-        <img loading="lazy" decoding="async" src="${esc(thumb)}" alt="" onerror="this.style.visibility='hidden'">
+        <img loading="lazy" decoding="async" src="${esc(thumb)}" data-full="${esc(full)}" data-title="${esc(cam.name)}" alt="" onerror="this.style.visibility='hidden'">
         <span class="cat-text"><b>${esc(cam.name)}</b><span class="hint">${esc(where)}</span></span>
         <button type="button" data-act="catalog-toggle" data-catalog-cam="${data}">${esc(t(added ? 's_added' : 's_add'))}</button></li>`;
     };
     const group = (kind, title) => {
       const list = found.filter((c) => c.kind === kind);
       if (!list.length) return '';
-      return `<h4>${esc(title)} <span class="hint">(${list.length})</span></h4><ul class="cat-list">${list.slice(0, limit).map(row).join('')}</ul>`;
+      return `<details class="cat-group" data-group="${kind}" ${this.catalogUI.open[kind] ? 'open' : ''}>
+        <summary>${esc(title)} <span class="hint">(${list.length})</span></summary>
+        <ul class="cat-list">${list.slice(0, limit).map(row).join('')}</ul></details>`;
     };
     const body = group('stream', t('streams')) + group('image', t('cameras'));
     const total = found.length;
@@ -358,6 +379,32 @@ export class Settings {
       + (found.filter((c) => c.kind === 'stream').length > limit || found.filter((c) => c.kind === 'image').length > limit
         ? `<button type="button" class="link" data-act="catalog-more">${esc(t('s_showAll', total))}</button>` : '')
       + `<p class="hint">${esc(t('s_catalogSource', catalog.scrapedAt.slice(0, 10)))}</p>`;
+  }
+
+  /** Show a larger preview of a catalogue thumbnail next to it (null hides). */
+  #preview(img) {
+    this.previewFor = img;
+    let box = this.dlg.querySelector('.cat-preview');
+    if (!img) { if (box) box.hidden = true; return; }
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'cat-preview';
+      box.innerHTML = '<img alt=""><span></span>';
+      this.dlg.appendChild(box);
+    }
+    const big = box.querySelector('img');
+    big.onerror = () => { if (big.src !== img.src) big.src = img.src; }; // fall back to the thumbnail
+    big.src = img.dataset.full;
+    box.querySelector('span').textContent = img.dataset.title;
+    box.hidden = false;
+    // Beside the thumbnail, kept inside the viewport.
+    const r = img.getBoundingClientRect(), w = Math.min(480, innerWidth - 24), h = w * 9 / 16 + 28;
+    let left = r.right + 12, top = r.top + r.height / 2 - h / 2;
+    if (left + w > innerWidth - 12) left = Math.max(12, r.left - w - 12);
+    if (left < 12 || (left < r.right && left + w > r.left)) { left = Math.max(12, (innerWidth - w) / 2); top = r.bottom + 8; }
+    box.style.width = `${w}px`;
+    box.style.left = `${left}px`;
+    box.style.top = `${Math.max(12, Math.min(innerHeight - h - 12, top))}px`;
   }
 
   /** Editable copy of a camera list. */
