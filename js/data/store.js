@@ -134,9 +134,12 @@ export class DataStore {
     this.instants = instants;
     // Snow estimate for each precipitation interval.
     for (const p of precip) {
-      if (p.snow != null) { p.snowCm = p.snow; p.snowSrc = p.src; continue; }
+      // Open-Meteo's snowfall often reports 0 for near-0 °C precipitation even
+      // while its own snow depth grows, so never let it undercut the estimate.
       const temp = this.instantAt((p.from + p.to) / 2)?.temp;
-      p.snowCm = p.amount * snowFraction(temp) * SNOW_CM_PER_MM;
+      const derived = p.amount * snowFraction(temp) * SNOW_CM_PER_MM;
+      if (p.snow != null && p.snow >= derived) { p.snowCm = p.snow; p.snowSrc = p.src; continue; }
+      p.snowCm = derived;
       p.snowSrc = 'derived';
     }
     this.precip = precip;
