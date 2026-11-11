@@ -229,6 +229,36 @@ export class DataStore {
     return this.precip.find((p) => t >= p.from && t < p.to) || null;
   }
 
+  /**
+   * A precipitation interval as shown to the user at time `now`: where the short-term
+   * nowcast (MET radar, 5-min; else Open-Meteo 15-min) covers it, the nowcast amount
+   * replaces the forecast (the uncovered part keeps its forecast share, pro rata).
+   * The forecast "up to" then only counts for the part that is neither nowcast nor
+   * over, and is dropped for intervals that are over.
+   */
+  precipShown(p, now) {
+    if (!p) return null;
+    if (p.to <= now) return p.max == null ? p : { ...p, max: null };
+    const nc = this.nowcast;
+    const steps = (nc?.steps || []).filter((s) => s.t + nc.stepMs > now);
+    if (!steps.length) return p;
+    const a = Math.max(p.from, steps[0].t, now), b = Math.min(p.to, steps[steps.length - 1].t + nc.stepMs);
+    if (b <= a) return p;
+    let radar = 0;
+    for (const s of steps) {
+      const o = Math.min(b, s.t + nc.stepMs) - Math.max(a, s.t);
+      if (o > 0) radar += s.rate * o / HOUR;
+    }
+    const len = p.to - p.from;
+    const rest = 1 - (b - a) / len;
+    // The forecast "up to" still applies to the part of the interval that is neither
+    // covered by the nowcast nor over: nowcast + past share + "up to" share.
+    const past = Math.max(0, Math.min(p.to, now) - p.from) / len;
+    const future = Math.max(0, rest - past);
+    const max = p.max != null && p.max > p.amount && future > 0.001 ? radar + p.amount * past + p.max * future : null;
+    return { ...p, amount: radar + p.amount * rest, max, src: rest > 0.001 && p.src !== nc.src ? [nc.src, p.src] : nc.src };
+  }
+
   precipIn(from, to) { return this.precip.filter((p) => p.to > from && p.from < to); }
 
   kpAt(t) { return this.kp.find((b) => t >= b.from && t < b.to) || null; }

@@ -92,7 +92,7 @@ function moonCard(ctx) {
 function weatherCard(ctx) {
   const v = makeV(ctx);
   const w = ctx.store.instantAt(ctx.viewT);
-  const p = ctx.store.precipAt(ctx.viewT);
+  const p = ctx.store.precipShown(ctx.store.precipAt(ctx.viewT), ctx.nowT); // same block as the graphic
   if (!w) return `<p class="empty">${esc(t('noData'))}</p>`;
   const feels = feelsLike(w.temp, w.wind, w.rh);
   const instDetail = span(w.from, w.to);

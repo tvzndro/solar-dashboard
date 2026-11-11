@@ -201,7 +201,8 @@ export class DayGraphic {
       ctx.setLineDash([]);
     }
 
-    // Moon and sun discs (sun in front) follow their curves and slide out of the frame (clipped) when off-scale.
+    // Moon and sun discs (sun in front) follow their curves. The moon slides out of the frame (clipped) when
+    // off-scale; the sun stops half-way out at the bottom edge so it always marks the time.
     let moonDisc = null;
     if (overlays.moon && m.moon) {
       const mr = Math.max(7, Math.min(10, plotH / 20));
@@ -223,7 +224,8 @@ export class DayGraphic {
 
     {
       const r = Math.max(8, Math.min(11, plotH / 18));
-      const sx = xOf(m.viewT), sy = yOf(elevationAt(sun, m.viewT));
+      // Never lower than half-hidden by the bottom edge, so it still marks the time.
+      const sx = xOf(m.viewT), sy = Math.min(B, yOf(elevationAt(sun, m.viewT)));
       ctx.save();
       // See-through where it covers the moon, so the moon stays visible behind it.
       if (moonDisc) {
@@ -305,9 +307,11 @@ export class DayGraphic {
     if (overlays.precipitation) {
       const bars = store.precipIn(start, end);
       const rate = (p, v) => v / ((p.to - p.from) / HOUR);
-      const top = Math.max(2, ...bars.map((p) => rate(p, Math.max(p.amount, p.max ?? 0))));
+      // Hours the nowcast covers show its amount (see DataStore.precipShown).
+      const blocks = bars.map((p) => store.precipShown(p, m.nowT));
+      const top = Math.max(2, ...blocks.map((p) => rate(p, Math.max(p.amount, p.max ?? 0))));
       const hOf = (r) => Math.min(PRECIP_H - 2, (r / top) * (PRECIP_H - 2));
-      for (const p of bars) {
+      for (const p of blocks) {
         const x0 = Math.max(L, xOf(p.from)), x1 = Math.min(R, xOf(p.to));
         const h = p.amount > 0 ? Math.max(2, hOf(rate(p, p.amount))) : 0;
         const hMax = p.max != null && p.max > p.amount ? Math.max(h + 2, hOf(rate(p, p.max))) : h;
