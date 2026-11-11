@@ -54,8 +54,9 @@ Fetched pages are cached in `.scrape-cache/` (git-ignored), so an interrupted ru
 | What | Source |
 |---|---|
 | Forecast, hourly range (~2.5 days) | MET Norway Locationforecast 2.0 |
-| Past days, far forecast, snowfall | Open-Meteo |
-| Next two hours | MET Norway Nowcast (radar, Nordic only), falling back to Open-Meteo 15-minutely |
+| Past days, far forecast | Open-Meteo |
+| Next two hours | MET Norway Nowcast (radar, Nordic only), falling back to Open-Meteo 15-minutely; rain/sleet/snow from MET's weather symbol |
+| Snowfall | Calculated: snow share from temperature + humidity (Jennings et al. 2018), depth from fresh-snow density by temperature + wind (Vionnet et al. 2012) |
 | Kp, 3-hourly observed + 3-day forecast | NOAA SWPC |
 | Kp, beyond 3 days (daily max, shown fainter) | NOAA SWPC 27-day outlook |
 | Tides (Norway): observed, forecast incl. weather, high/low | Kartverket sea level API |

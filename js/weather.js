@@ -1,6 +1,6 @@
 // Derived weather quantities.
 
-import { snowFraction } from './data/store.js';
+import { snowProbability } from './data/store.js';
 
 const BEAUFORT_UPPER = [0.5, 1.6, 3.4, 5.5, 8.0, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7];
 export function beaufort(ms) {
@@ -34,9 +34,8 @@ export function feelsLike(tempC, windMs, rh) {
   return Math.max(heatIndex(), steadman());
 }
 
-export function precipType(tempC, snowHint) {
-  if (snowHint) return 'snow';
-  const s = snowFraction(tempC ?? 5);
+export function precipType(tempC, rh) {
+  const s = snowProbability(tempC ?? 5, rh);
   if (s >= 0.75) return 'snow';
   if (s > 0.25) return 'sleet';
   return 'rain';
@@ -50,18 +49,35 @@ export function intensity(rateMmH) {
 
 const WET = 0.1; // mm/h
 
+/** Precipitation type named by a MET weather symbol ('lightsnowshowers_day' → 'snow'), or null. */
+export function symbolType(code) {
+  if (!code) return null;
+  if (code.includes('sleet')) return 'sleet';
+  if (code.includes('snow')) return 'snow';
+  if (code.includes('rain')) return 'rain';
+  return null;
+}
+
 /**
  * Short-term outlook from nowcast steps starting at `now`.
+ * `typeAt(t)` may name the precipitation type forecast for time t (MET's weather
+ * symbol); the most common one over the wet steps wins, else it is estimated from
+ * temperature and humidity.
  * Returns { kind: 'start'|'stop'|'continues'|'dry', inMs, rate, type, horizonMs, steps }.
  */
-export function shortTermOutlook(nowcast, now, tempC) {
+export function shortTermOutlook(nowcast, now, tempC, rh, typeAt = () => null) {
   if (!nowcast?.steps?.length) return null;
   const steps = nowcast.steps.filter((s) => s.t + nowcast.stepMs > now);
   if (!steps.length) return null;
   const end = steps[steps.length - 1].t + nowcast.stepMs;
   const horizonMs = end - now;
   const temp = nowcast.temp ?? tempC;
-  const typeOf = (sts) => precipType(temp, sts.some((s) => s.snow));
+  const typeOf = (sts) => {
+    const votes = {};
+    for (const s of sts) { const ty = typeAt(s.t + nowcast.stepMs / 2); if (ty) votes[ty] = (votes[ty] || 0) + s.rate; }
+    const best = Object.keys(votes).sort((a, b) => votes[b] - votes[a])[0];
+    return best || precipType(temp, rh);
+  };
   const wetNow = steps[0].rate >= WET;
   if (wetNow) {
     const stop = steps.findIndex((s) => s.rate < WET);

@@ -8,14 +8,27 @@ import { mockData } from './mock.js';
 const REFRESH = { met: 15 * MIN, openmeteo: 30 * MIN, nowcast: 5 * MIN, kp: 30 * MIN, kp27: 6 * HOUR, kartverket: 30 * MIN, marine: 3 * HOUR };
 const RETRY = 2 * MIN;
 
-/** Fraction of precipitation falling as snow, by air temperature. */
-export function snowFraction(tempC) {
+/**
+ * Probability that precipitation falls as snow (used as the snow fraction).
+ * Jennings et al. 2018 (Nat. Commun. 9:1148), bivariate logistic model fitted to
+ * 17.8 M Northern Hemisphere observations: humid air keeps precipitation liquid
+ * to lower temperatures, dry air lets snow survive above 0 °C (evaporative cooling).
+ * T in °C, RH in %. Without humidity, assume the moist air typical of precipitation.
+ */
+export function snowProbability(tempC, rh) {
   if (tempC == null) return 0;
-  if (tempC <= 0) return 1;
-  if (tempC >= 2) return 0;
-  return 1 - tempC / 2;
+  return 1 / (1 + Math.exp(-10.04 + 1.41 * tempC + 0.09 * (rh ?? 90)));
 }
-const SNOW_CM_PER_MM = 1; // ~10:1 snow-to-liquid ratio
+
+/**
+ * Density of freshly fallen snow (kg/m³) from air temperature and 10 m wind:
+ * Vionnet et al. 2012 (Crocus snow model), ρ = 109 + 6·T + 26·√U, kept within
+ * 50–250. Wet near-0 °C snow and wind-packed snow are dense (shallow); cold calm
+ * snow is light. 1 mm water → 100/ρ cm of snow (≈ 9 cm at 0 °C calm, 5 cm windy).
+ */
+export function newSnowDensity(tempC, wind) {
+  return Math.min(250, Math.max(50, 109 + 6 * (tempC ?? 0) + 26 * Math.sqrt(Math.max(0, wind ?? 3))));
+}
 
 export class DataStore {
   constructor(onUpdate) {
@@ -132,15 +145,14 @@ export class DataStore {
     instants.sort((a, b) => a.t - b.t);
     precip.sort((a, b) => a.from - b.from);
     this.instants = instants;
-    // Snow estimate for each precipitation interval.
+    // Snow estimate for each precipitation interval: water that falls as snow
+    // (phase from temperature + humidity), turned into depth by fresh-snow density
+    // (temperature + wind). Open-Meteo's own snowfall isn't used: in Norway its
+    // default model (MET Nordic) reports 0 always, and ICON turns snow into rain
+    // above 1.5 °C, so it only made figures inconsistent between places.
     for (const p of precip) {
-      // Open-Meteo's snowfall often reports 0 for near-0 °C precipitation even
-      // while its own snow depth grows, so never let it undercut the estimate.
-      const temp = this.instantAt((p.from + p.to) / 2)?.temp;
-      const derived = p.amount * snowFraction(temp) * SNOW_CM_PER_MM;
-      if (p.snow != null && p.snow >= derived) { p.snowCm = p.snow; p.snowSrc = p.src; continue; }
-      p.snowCm = derived;
-      p.snowSrc = 'derived';
+      const w = this.instantAt((p.from + p.to) / 2);
+      p.snowCm = p.amount * snowProbability(w?.temp, w?.rh) * 100 / newSnowDensity(w?.temp, w?.wind);
     }
     this.precip = precip;
 
@@ -211,7 +223,7 @@ export class DataStore {
       const overlap = Math.min(p.to, to) - Math.max(p.from, from);
       sum += p.snowCm * overlap / (p.to - p.from);
       covered += overlap;
-      srcs.add(p.snowSrc === 'derived' ? p.src : p.snowSrc);
+      srcs.add(p.src);
     }
     return { cm: sum, complete: covered >= (to - from) - MIN, srcs: [...srcs] };
   }

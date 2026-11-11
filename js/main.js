@@ -3,14 +3,13 @@
 import { Config, streamsFor } from './config.js';
 import { setLanguage, t } from './i18n.js';
 import * as f from './format.js';
-import { DataStore } from './data/store.js';
+import { DataStore, snowProbability } from './data/store.js';
 import { DayGraphic } from './graphic.js';
 import { renderCards, SNOW_WINDOWS } from './cards.js';
 import { Cameras } from './cameras.js';
 import { Settings } from './settings.js';
 import { sunDay } from './sun.js';
 import { moonDay } from './moon.js';
-import { snowFraction } from './data/store.js';
 import { dayRange, browserTimeZone, isValidTimeZone, MIN, DAY } from './time.js';
 
 const MIN_DAY = -2;
@@ -124,7 +123,7 @@ function render() {
   const snowWindow = SNOW_WINDOWS.includes(c.snowWindowHours) ? c.snowWindowHours : 12;
   // Snowfall only matters if the loaded data (past days + forecast) ever gets cold enough.
   const hidden = new Set();
-  if (!store.instants.some((i) => snowFraction(i.temp) > 0)) hidden.add('snow');
+  if (!store.instants.some((i) => snowProbability(i.temp, i.rh) >= 0.1)) hidden.add('snow');
   if (!store.tide) hidden.add('tide'); // inland: no sea level data
 
   renderCards($('#cards'), {

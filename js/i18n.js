@@ -63,7 +63,7 @@ const STRINGS = {
     noKp: 'No Kp data for this time',
     // snow
     past: 'Past', next: 'Next', hours: (n) => `${n} h`, snowNone: 'None',
-    snowNote: 'Estimated from precipitation and temperature',
+    snowNote: 'Estimated from precipitation, temperature, humidity and wind',
     // sources
     src_met: 'MET Norway forecast', src_nowcast: 'MET Norway nowcast', src_openmeteo: 'Open-Meteo',
     src_kp: 'NOAA SWPC Kp', src_kp27: 'NOAA SWPC 27-day outlook', src_mock: 'Mock data', src_sun: 'Computed locally',
@@ -150,7 +150,7 @@ const STRINGS = {
     tooBright: 'For lyst for nordlys akkurat nå', cloudy: 'men overskyet',
     noKp: 'Ingen Kp-data for dette tidspunktet',
     past: 'Siste', next: 'Neste', hours: (n) => `${n} t`, snowNone: 'Ingen',
-    snowNote: 'Anslått ut fra nedbør og temperatur',
+    snowNote: 'Anslått ut fra nedbør, temperatur, luftfuktighet og vind',
     src_met: 'MET Norge varsel', src_nowcast: 'MET Norge nåvarsel', src_openmeteo: 'Open-Meteo',
     src_kp: 'NOAA SWPC Kp', src_kp27: 'NOAA SWPC 27-dagersvarsel', src_mock: 'Testdata', src_sun: 'Beregnet lokalt',
     src_derived: 'Avledet', fetched: 'hentet', failed: 'feilet', loading: 'laster…', notUsed: 'ikke i bruk',

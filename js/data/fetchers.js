@@ -1,7 +1,7 @@
 // Network fetchers. Each returns data normalised to internal units:
 //   instants: { t, temp, rh, wind, gust, dir, cloud }         (°C, %, m/s, m/s, deg, %)
-//   precip:   { from, to, amount, max?, snow? }              (mm water; snow in cm if the source gives it)
-//   nowcast:  { t, rate, snow? }                              (mm/h, interval starting at t)
+//   precip:   { from, to, amount, max?, symbol? }            (mm water; MET weather symbol)
+//   nowcast:  { t, rate }                                     (mm/h, interval starting at t)
 //   kp:       { from, to, kp, kind: 'observed'|'predicted'|'outlook27' }
 //
 // NOTE (Firefox): never set custom headers (e.g. User-Agent) on api.met.no
@@ -37,7 +37,7 @@ export async function fetchMet(lat, lon, signal) {
     });
     const n1 = ts.data.next_1_hours?.details, n6 = ts.data.next_6_hours?.details;
     if (n1) {
-      precip.push({ from: t, to: t + HOUR, amount: n1.precipitation_amount ?? 0, max: n1.precipitation_amount_max ?? null, hourly: true });
+      precip.push({ from: t, to: t + HOUR, amount: n1.precipitation_amount ?? 0, max: n1.precipitation_amount_max ?? null, symbol: ts.data.next_1_hours.summary?.symbol_code ?? null, hourly: true });
       hourlyEnd = t;
     } else if (n6) {
       precip.push({ from: t, to: t + 6 * HOUR, amount: n6.precipitation_amount ?? 0, max: n6.precipitation_amount_max ?? null, hourly: false });
@@ -63,9 +63,9 @@ export async function fetchNowcast(lat, lon, signal) {
 }
 
 export function openMeteoUrl(lat, lon) {
-  const hourly = 'temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation,snowfall';
+  const hourly = 'temperature_2m,relative_humidity_2m,cloud_cover,wind_speed_10m,wind_gusts_10m,wind_direction_10m,precipitation';
   return `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=${hourly}`
-    + '&minutely_15=precipitation,snowfall&forecast_minutely_15=12&past_minutely_15=1'
+    + '&minutely_15=precipitation&forecast_minutely_15=12&past_minutely_15=1'
     + '&past_days=3&forecast_days=12&timezone=auto&timeformat=unixtime&wind_speed_unit=ms';
 }
 
@@ -82,7 +82,7 @@ export async function fetchOpenMeteo(lat, lon, signal) {
       gust: h.wind_gusts_10m[i], dir: h.wind_direction_10m[i], cloud: h.cloud_cover[i],
     });
     // Open-Meteo hourly precipitation is the sum over the *preceding* hour.
-    if (h.precipitation[i] != null) precip.push({ from: t - HOUR, to: t, amount: h.precipitation[i], snow: h.snowfall[i] ?? null });
+    if (h.precipitation[i] != null) precip.push({ from: t - HOUR, to: t, amount: h.precipitation[i] });
   }
   let nowcast = null;
   const m = json.minutely_15;
@@ -90,7 +90,7 @@ export async function fetchOpenMeteo(lat, lon, signal) {
     nowcast = {
       url, temp: null, stepMs: 15 * MIN,
       // Also "preceding 15 minutes": shift to interval start, convert to mm/h.
-      steps: m.time.map((tt, i) => ({ t: tt * 1000 - 15 * MIN, rate: (m.precipitation[i] ?? 0) * 4, snow: (m.snowfall[i] ?? 0) > 0 })),
+      steps: m.time.map((tt, i) => ({ t: tt * 1000 - 15 * MIN, rate: (m.precipitation[i] ?? 0) * 4 })),
     };
   }
   return { url, instants, precip, nowcast, timezone: json.timezone };

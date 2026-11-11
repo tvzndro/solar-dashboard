@@ -5,7 +5,7 @@ import * as f from './format.js';
 import { HOUR, MIN } from './time.js';
 import { elevationAt, phaseOf, sunPosition } from './sun.js';
 import { moonPosition, moonIllumination, phaseKey, litPath } from './moon.js';
-import { beaufort, feelsLike, precipType, intensity, shortTermOutlook, kpNeeded, auroraChance } from './weather.js';
+import { beaufort, feelsLike, precipType, symbolType, intensity, shortTermOutlook, kpNeeded, auroraChance } from './weather.js';
 
 export const SNOW_WINDOWS = [3, 6, 12, 24, 48];
 
@@ -100,7 +100,7 @@ function weatherCard(ctx) {
   if (p) {
     const hrs = (p.to - p.from) / HOUR;
     const rate = p.amount / hrs;
-    const type = precipType(w.temp, p.snow > 0);
+    const type = precipType(w.temp, w.rh);
     precipText = rate > 0
       ? `${f.precip(rate)}${t('perHour')} ${t('ptype')[type]}`
       : f.precip(0);
@@ -137,8 +137,8 @@ function windCard(ctx) {
 function outlookCard(ctx) {
   const v = makeV(ctx);
   const nc = ctx.store.nowcast;
-  const temp = ctx.store.instantAt(ctx.nowT)?.temp;
-  const o = shortTermOutlook(nc, ctx.nowT, temp);
+  const w = ctx.store.instantAt(ctx.nowT);
+  const o = shortTermOutlook(nc, ctx.nowT, w?.temp, w?.rh, (tt) => symbolType(ctx.store.precipAt(tt)?.symbol));
   if (!o) return `<p class="empty">${esc(t('noOutlook'))}</p>`;
   const what = (o.rate != null) ? `${t('intensity')[intensity(o.rate)]} ${t('ptype')[o.type]}` : '';
   const text = {
@@ -197,8 +197,8 @@ function snowCard(ctx) {
   const i = SNOW_WINDOWS.indexOf(n);
   return `
     <div class="snow-grid">
-      <div><div class="lbl">${esc(t('past'))} ${esc(t('hours', n))}</div><div class="big">${v(fmt(past), past.srcs, 'snow from precipitation × temperature')}</div></div>
-      <div><div class="lbl">${esc(t('next'))} ${esc(t('hours', n))}</div><div class="big">${v(fmt(next), next.srcs, 'snow from precipitation × temperature')}</div></div>
+      <div><div class="lbl">${esc(t('past'))} ${esc(t('hours', n))}</div><div class="big">${v(fmt(past), past.srcs, 'snow from precipitation, temperature, humidity and wind')}</div></div>
+      <div><div class="lbl">${esc(t('next'))} ${esc(t('hours', n))}</div><div class="big">${v(fmt(next), next.srcs, 'snow from precipitation, temperature, humidity and wind')}</div></div>
     </div>
     <div class="stepper">
       <button type="button" data-action="snow-window" data-value="${SNOW_WINDOWS[Math.max(0, i - 1)]}" ${i <= 0 ? 'disabled' : ''} aria-label="−">−</button>
