@@ -15,7 +15,7 @@ const COLORS = {
   day: '#3a86ff',
   cloud: 'rgba(118,118,118,0.96)',
   precip: '#0a84c8',
-  precipMax: 'rgba(18,90,130,0.85)',
+  precipMax: 'rgba(110,185,235,0.75)', // stripes for the forecast "up to"
   kp: 'rgba(16,185,80,0.5)',
   kpRough: 'rgba(16,185,80,0.28)',
   frame: 'rgba(255,255,255,0.16)',
@@ -31,6 +31,7 @@ const COLORS = {
 };
 
 const PRECIP_H = 40;
+const PRECIP_FULL = 8; // mm/h that fills the precipitation strip
 const LABEL_H = 26;
 const PAD_X = 10;
 const TOUCH_HOLD = 3000;
@@ -309,14 +310,42 @@ export class DayGraphic {
       const rate = (p, v) => v / ((p.to - p.from) / HOUR);
       // Hours the nowcast covers show its amount (see DataStore.precipShown).
       const blocks = bars.map((p) => store.precipShown(p, m.nowT));
-      const top = Math.max(2, ...blocks.map((p) => rate(p, Math.max(p.amount, p.max ?? 0))));
-      const hOf = (r) => Math.min(PRECIP_H - 2, (r / top) * (PRECIP_H - 2));
-      for (const p of blocks) {
-        const x0 = Math.max(L, xOf(p.from)), x1 = Math.min(R, xOf(p.to));
+      // Fixed square-root scale, the same every day, so a bar's height always means the
+      // same amount: light (< 1 mm/h) stays low, heavy (≥ 4 mm/h, MET's bands as in
+      // weather.js) is over two-thirds up, and PRECIP_FULL or more fills the strip.
+      // Anything above, including a larger "up to", is cut off at the top.
+      const hOf = (r) => Math.min(PRECIP_H - 2, Math.sqrt(r / PRECIP_FULL) * (PRECIP_H - 2));
+      // Edges snapped to device pixels, so neighbouring blocks meet without a seam.
+      const snap = (v) => Math.round(v * dpr) / dpr;
+      const geo = blocks.map((p) => {
         const h = p.amount > 0 ? Math.max(2, hOf(rate(p, p.amount))) : 0;
         const hMax = p.max != null && p.max > p.amount ? Math.max(h + 2, hOf(rate(p, p.max))) : h;
-        if (hMax > h) { ctx.fillStyle = COLORS.precipMax; ctx.fillRect(x0, T - hMax, x1 - x0, hMax - h); }
-        if (h > 0) { ctx.fillStyle = COLORS.precip; ctx.fillRect(x0, T - h, x1 - x0, h); }
+        return { x0: snap(Math.max(L, xOf(p.from))), x1: snap(Math.min(R, xOf(p.to))), bar: snap(T - h), top: snap(T - hMax), up: hMax > h };
+      });
+      for (const g of geo) {
+        if (g.bar < T) { ctx.fillStyle = COLORS.precip; ctx.fillRect(g.x0, g.bar, g.x1 - g.x0, T - g.bar); }
+      }
+      // "Up to": diagonal stripes inside one outline around each run of neighbouring
+      // blocks (top and outer sides, open onto the bars), so it reads as a possible
+      // range rather than more precipitation.
+      ctx.fillStyle = stripes(ctx, COLORS.precipMax);
+      for (const g of geo) if (g.up) ctx.fillRect(g.x0, g.top, g.x1 - g.x0, g.bar - g.top);
+      ctx.strokeStyle = COLORS.precipMax; ctx.lineWidth = 1;
+      const o = 0.5; // centre the 1 px line on the box's edge pixels
+      for (let i = 0; i < geo.length; i++) {
+        if (!geo[i].up) continue;
+        let j = i;
+        while (j + 1 < geo.length && geo[j + 1].up && Math.abs(geo[j + 1].x0 - geo[j].x1) < 0.5) j++;
+        ctx.beginPath();
+        ctx.moveTo(geo[i].x0 + o, geo[i].bar);
+        ctx.lineTo(geo[i].x0 + o, geo[i].top + o);
+        for (let k = i; k <= j; k++) {
+          ctx.lineTo(geo[k].x1 - (k === j ? o : 0), geo[k].top + o);
+          if (k < j) ctx.lineTo(geo[k].x1, geo[k + 1].top + o);
+        }
+        ctx.lineTo(geo[j].x1 - o, geo[j].bar);
+        ctx.stroke();
+        i = j;
       }
     }
 
@@ -358,6 +387,27 @@ export class DayGraphic {
 
     this.canvas.setAttribute('aria-valuetext', clock(m.viewT));
   }
+}
+
+/** A repeating diagonal-stripe fill (6 px spacing), cached per colour. */
+const stripeCache = new Map();
+function stripes(ctx, color) {
+  let pat = stripeCache.get(color);
+  if (!pat) {
+    const t = document.createElement('canvas');
+    t.width = t.height = 6;
+    const g = t.getContext('2d');
+    g.strokeStyle = color; g.lineWidth = 1.2;
+    g.beginPath();
+    // One diagonal plus its wrapped corners, so tiles join seamlessly.
+    g.moveTo(-1, 7); g.lineTo(7, -1);
+    g.moveTo(-1, 1); g.lineTo(1, -1);
+    g.moveTo(5, 7); g.lineTo(7, 5);
+    g.stroke();
+    pat = ctx.createPattern(t, 'repeat');
+    stripeCache.set(color, pat);
+  }
+  return pat;
 }
 
 /** Data points inside [start, end] plus one neighbour on each side (within `reach`) so curves run to the edges. */
