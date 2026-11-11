@@ -22,13 +22,31 @@ export function snowProbability(tempC, rh) {
 
 /**
  * Density of freshly fallen snow (kg/m³) from air temperature and 10 m wind:
- * Vionnet et al. 2012 (Crocus snow model), ρ = 109 + 6·T + 26·√U, kept within
- * 50–250. Wet near-0 °C snow and wind-packed snow are dense (shallow); cold calm
- * snow is light. 1 mm water → 100/ρ cm of snow (≈ 9 cm at 0 °C calm, 5 cm windy).
+ * Jordan et al. 1999 (SNTHERM; also used in CLM and Noah-MP),
+ *   ρ = 500·(1 − 0.951·exp(−1.4·(5 − T)^−1.15 − 0.008·U^1.7)),  −13 °C < T ≤ 2.5 °C
+ *   ρ = 500·(1 − 0.904·exp(−0.008·U^1.7)),                       T ≤ −13 °C
+ * (T held at 2.5 °C above that), kept within 50–250. Among the closest to measured
+ * hourly densities (Helfricht et al. 2018) and in line with the Norwegian seNorge
+ * model (Saloranta 2012). Wet near-0 °C or windy snow is dense, cold calm snow light:
+ * 1 mm water → 100/ρ cm (≈ 0.8 cm at 0 °C calm, 0.65 cm at 4 m/s, 1.4 cm at −10 °C calm).
  */
 export function newSnowDensity(tempC, wind) {
-  return Math.min(250, Math.max(50, 109 + 6 * (tempC ?? 0) + 26 * Math.sqrt(Math.max(0, wind ?? 3))));
+  const t = Math.min(2.5, tempC ?? 0);
+  const w = 0.008 * Math.max(0, wind ?? 3) ** 1.7;
+  const rho = t <= -13 ? 500 * (1 - 0.904 * Math.exp(-w)) : 500 * (1 - 0.951 * Math.exp(-1.4 * (5 - t) ** -1.15 - w));
+  return Math.min(250, Math.max(50, rho));
 }
+
+/**
+ * Settling of new snow: relative density increase per hour (Anderson 1976, as in
+ * Snow-17 and CLM): 2.778e-6 s⁻¹ · e^(0.04·T) (T ≤ 0 °C), slowed by e^(−0.046·(ρ − 150))
+ * once denser than 150 kg/m³, doubled when wet (T > 0 °C). ≈ 1 %/h near 0 °C.
+ */
+function settleRate(tempC, rho) {
+  const t = tempC ?? 0;
+  return 0.0100008 * Math.exp(0.04 * Math.min(0, t)) * (rho > 150 ? Math.exp(-0.046 * (rho - 150)) : 1) * (t > 0 ? 2 : 1);
+}
+const MAX_SNOW_DENSITY = 550; // seNorge's cap
 
 export class DataStore {
   constructor(onUpdate) {
@@ -152,7 +170,8 @@ export class DataStore {
     // above 1.5 °C, so it only made figures inconsistent between places.
     for (const p of precip) {
       const w = this.instantAt((p.from + p.to) / 2);
-      p.snowCm = p.amount * snowProbability(w?.temp, w?.rh) * 100 / newSnowDensity(w?.temp, w?.wind);
+      p.snowSwe = p.amount * snowProbability(w?.temp, w?.rh); // mm water
+      p.snowRho = newSnowDensity(w?.temp, w?.wind);
     }
     this.precip = precip;
 
@@ -216,12 +235,23 @@ export class DataStore {
 
   kpIn(from, to) { return this.kp.filter((b) => b.to > from && b.from < to); }
 
-  /** Snow (cm) in [from, to), pro-rating partially overlapping intervals. */
+  /**
+   * New snow (cm) from [from, to) as it would measure at `to`: each interval's snow
+   * (pro-rated if it only partly overlaps) settles from when it fell until `to`.
+   */
   snowBetween(from, to) {
     let sum = 0, covered = 0, srcs = new Set();
     for (const p of this.precipIn(from, to)) {
-      const overlap = Math.min(p.to, to) - Math.max(p.from, from);
-      sum += p.snowCm * overlap / (p.to - p.from);
+      const a = Math.max(p.from, from), b = Math.min(p.to, to), overlap = b - a;
+      const swe = p.snowSwe * overlap / (p.to - p.from);
+      if (swe > 0) {
+        let rho = p.snowRho;
+        for (let t = (a + b) / 2; t < to; t += HOUR) {
+          const dt = Math.min(HOUR, to - t) / HOUR;
+          rho = Math.min(MAX_SNOW_DENSITY, rho * (1 + settleRate(this.instantAt(t + dt * HOUR / 2)?.temp, rho) * dt));
+        }
+        sum += swe * 100 / rho;
+      }
       covered += overlap;
       srcs.add(p.src);
     }
