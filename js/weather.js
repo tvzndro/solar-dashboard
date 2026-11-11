@@ -1,7 +1,5 @@
 // Derived weather quantities.
 
-import { snowProbability } from './data/store.js';
-
 const BEAUFORT_UPPER = [0.5, 1.6, 3.4, 5.5, 8.0, 10.8, 13.9, 17.2, 20.8, 24.5, 28.5, 32.7];
 export function beaufort(ms) {
   const i = BEAUFORT_UPPER.findIndex((u) => ms < u);
@@ -34,11 +32,20 @@ export function feelsLike(tempC, windMs, rh) {
   return Math.max(heatIndex(), steadman());
 }
 
+/**
+ * Rain / sleet / snow from air temperature (°C) and relative humidity (%), by the
+ * Finnish Meteorological Institute's operational method (Koistinen et al. 2004;
+ * Saltikoff et al. 2015, as given in Sivasubramaniam et al. 2018, HESS 22:6533):
+ *   P(liquid) = 1 / (1 + e^(22 − 2.7·T − 0.2·RH)); < 0.2 snow, > 0.8 rain, else mixed (sleet).
+ * Used for the type because it has a mixed class. The snowfall amounts use Jennings
+ * et al. 2018 (snowProbability), which was fitted on rain/snow reports only;
+ * the two put the 50 % line within ~0.2 °C of each other.
+ */
 export function precipType(tempC, rh) {
-  const s = snowProbability(tempC ?? 5, rh);
-  if (s >= 0.75) return 'snow';
-  if (s > 0.25) return 'sleet';
-  return 'rain';
+  const pLiquid = 1 / (1 + Math.exp(22 - 2.7 * (tempC ?? 5) - 0.2 * (rh ?? 90)));
+  if (pLiquid < 0.2) return 'snow';
+  if (pLiquid > 0.8) return 'rain';
+  return 'sleet';
 }
 
 export function intensity(rateMmH) {
