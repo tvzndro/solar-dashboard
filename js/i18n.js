@@ -66,7 +66,7 @@ const STRINGS = {
     snowNote: 'Estimated from precipitation, temperature, humidity and wind',
     // sources
     src_met: 'MET Norway forecast', src_nowcast: 'MET Norway nowcast', src_openmeteo: 'Open-Meteo',
-    src_kp: 'NOAA SWPC Kp', src_kp27: 'NOAA SWPC 27-day outlook', src_mock: 'Mock data', src_sun: 'Computed locally',
+    src_kp: 'NOAA SWPC Kp', src_kp3: 'NOAA SWPC 3-day forecast', src_kp27: 'NOAA SWPC 27-day outlook', src_mock: 'Mock data', src_sun: 'Computed locally',
     src_derived: 'Derived', fetched: 'fetched', failed: 'failed', loading: 'loading…', notUsed: 'not used',
     sourceOf: 'Source',
     // misc
@@ -152,7 +152,7 @@ const STRINGS = {
     past: 'Siste', next: 'Neste', hours: (n) => `${n} t`, snowNone: 'Ingen',
     snowNote: 'Anslått ut fra nedbør, temperatur, luftfuktighet og vind',
     src_met: 'MET Norge varsel', src_nowcast: 'MET Norge nåvarsel', src_openmeteo: 'Open-Meteo',
-    src_kp: 'NOAA SWPC Kp', src_kp27: 'NOAA SWPC 27-dagersvarsel', src_mock: 'Testdata', src_sun: 'Beregnet lokalt',
+    src_kp: 'NOAA SWPC Kp', src_kp3: 'NOAA SWPC 3-dagersvarsel', src_kp27: 'NOAA SWPC 27-dagersvarsel', src_mock: 'Testdata', src_sun: 'Beregnet lokalt',
     src_derived: 'Avledet', fetched: 'hentet', failed: 'feilet', loading: 'laster…', notUsed: 'ikke i bruk',
     sourceOf: 'Kilde',
     noData: 'Ingen data', mockBanner: 'Testdata — ikke ekte vær',

@@ -119,6 +119,41 @@ export async function fetchKp(signal) {
 
 const MONTHS = { Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5, Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11 };
 
+export const KP3_URL = 'https://services.swpc.noaa.gov/text/3-day-forecast.txt';
+
+// The 3-day forecast's 3-hourly Kp table. The JSON feed sometimes drops whole days
+// (e.g. the current one), and this text product still covers them.
+export async function fetchKp3(signal) {
+  const res = await fetch(KP3_URL, { signal });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const lines = (await res.text()).split('\n');
+  const issued = lines.join('\n').match(/:Issued:\s*(\d{4})\s+([A-Z][a-z]{2})/);
+  if (!issued) throw new Error('No issue date');
+  const year = +issued[1], issuedMonth = MONTHS[issued[2]];
+  const at = lines.findIndex((l) => /NOAA Kp index breakdown/.test(l));
+  if (at < 0) throw new Error('No Kp table');
+  let days = null;
+  const blocks = [];
+  for (const line of lines.slice(at + 1)) {
+    if (!days) {
+      const ds = [...line.matchAll(/([A-Z][a-z]{2})\s+(\d{1,2})/g)].filter((m) => m[1] in MONTHS);
+      if (ds.length) days = ds.map((m) => Date.UTC(year + (MONTHS[m[1]] < issuedMonth ? 1 : 0), MONTHS[m[1]], +m[2]));
+      continue;
+    }
+    const m = line.match(/^\s*(\d{2})-\d{2}UT\s+(.*)$/);
+    if (!m) { if (blocks.length) break; continue; }
+    const vals = m[2].replace(/\([^)]*\)/g, '').trim().split(/\s+/).map(Number);
+    vals.forEach((kp, i) => {
+      if (days[i] == null || !Number.isFinite(kp)) return;
+      const from = days[i] + +m[1] * HOUR;
+      blocks.push({ from, to: from + 3 * HOUR, kp, kind: 'predicted' });
+    });
+  }
+  if (!blocks.length) throw new Error('Empty Kp table');
+  blocks.sort((a, b) => a.from - b.from);
+  return { url: KP3_URL, blocks };
+}
+
 export async function fetchKp27(signal) {
   const res = await fetch(KP27_URL, { signal });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);

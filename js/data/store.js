@@ -2,10 +2,27 @@
 // "what is the value at time t, and where did it come from?".
 
 import { HOUR, MIN } from '../time.js';
-import { fetchMet, fetchNowcast, fetchOpenMeteo, fetchKp, fetchKp27, fetchKartverket, fetchMarine } from './fetchers.js';
+import { fetchMet, fetchNowcast, fetchOpenMeteo, fetchKp, fetchKp3, fetchKp27, fetchKartverket, fetchMarine } from './fetchers.js';
 import { mockData } from './mock.js';
 
-const REFRESH = { met: 15 * MIN, openmeteo: 30 * MIN, nowcast: 5 * MIN, kp: 30 * MIN, kp27: 6 * HOUR, kartverket: 30 * MIN, marine: 3 * HOUR };
+const REFRESH = { met: 15 * MIN, openmeteo: 30 * MIN, nowcast: 5 * MIN, kp: 30 * MIN, kp3: HOUR, kp27: 6 * HOUR, kartverket: 30 * MIN, marine: 3 * HOUR };
+
+/** Add the parts of `extra` blocks that don't overlap `blocks`; returns a sorted list. */
+function fillGaps(blocks, extra) {
+  const base = [...blocks].sort((a, b) => a.from - b.from);
+  const pieces = [];
+  for (const b of extra) {
+    let from = b.from;
+    for (const c of base) {
+      if (c.to <= from) continue;
+      if (c.from >= b.to) break;
+      if (c.from > from) pieces.push({ ...b, from, to: c.from });
+      from = Math.max(from, c.to);
+    }
+    if (from < b.to) pieces.push({ ...b, from });
+  }
+  return [...base, ...pieces].sort((a, b) => a.from - b.from);
+}
 const RETRY = 2 * MIN;
 
 /**
@@ -89,6 +106,7 @@ export class DataStore {
       ...(lat > 57 && lat < 82 && lon > 2 && lon < 33 ? { kartverket: () => fetchKartverket(lat, lon, this.abort.signal, now()) } : {}),
       marine: () => fetchMarine(lat, lon, this.abort.signal),
       kp: () => fetchKp(this.abort.signal),
+      kp3: () => fetchKp3(this.abort.signal),
       kp27: () => fetchKp27(this.abort.signal),
     };
     for (const name of Object.keys(this.jobs)) this.#run(name, gen);
@@ -138,7 +156,7 @@ export class DataStore {
 
   /** Combine sources: MET where it has hourly steps, Open-Meteo elsewhere (past days, far future). */
   #merge() {
-    const { met, openmeteo: om, mock, nowcast, kp, kp27 } = this.raw;
+    const { met, openmeteo: om, mock, nowcast, kp, kp3, kp27 } = this.raw;
     let instants = [], precip = [];
     if (mock) {
       instants = mock.instants.map((x) => ({ ...x, src: 'mock' }));
@@ -181,15 +199,13 @@ export class DataStore {
     else if (om?.nowcast) this.nowcast = { ...om.nowcast, src: 'openmeteo' };
     else this.nowcast = null;
 
-    // Kp: 3-hourly observed/predicted, then the coarse daily outlook beyond it.
+    // Kp: the 3-hourly JSON feed first; the 3-day text forecast fills any gaps in it
+    // (NOAA sometimes drops the current day), then the coarse daily outlook fills the rest.
     if (mock) this.kp = mock.kp.map((b) => ({ ...b, src: 'mock' }));
     else {
-      const blocks = (kp?.blocks || []).map((b) => ({ ...b, src: 'kp' }));
-      const end = blocks.length ? blocks[blocks.length - 1].to : -Infinity;
-      for (const b of kp27?.blocks || []) {
-        if (b.to <= end) continue;
-        blocks.push({ ...b, from: Math.max(b.from, end), src: 'kp27' });
-      }
+      let blocks = (kp?.blocks || []).map((b) => ({ ...b, src: 'kp' }));
+      blocks = fillGaps(blocks, (kp3?.blocks || []).map((b) => ({ ...b, src: 'kp3' })));
+      blocks = fillGaps(blocks, (kp27?.blocks || []).map((b) => ({ ...b, src: 'kp27' })));
       this.kp = blocks;
     }
     // Tides: prefer Kartverket when it has data for this spot.
