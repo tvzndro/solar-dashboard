@@ -53,9 +53,11 @@ export function nowcastUrl(lat, lon) {
 export async function fetchNowcast(lat, lon, signal) {
   const url = nowcastUrl(lat, lon);
   const json = await getJson(url, signal);
-  if (json.properties.meta.radar_coverage && json.properties.meta.radar_coverage !== 'ok') {
-    throw new Error(`radar coverage: ${json.properties.meta.radar_coverage}`);
-  }
+  // 'no coverage' (outside the radars, e.g. Baltics, open sea) or 'temporarily
+  // unavailable' (radar outage) is a valid answer, not a failure: report it as
+  // "nothing here" so the Open-Meteo nowcast is used without an error warning.
+  const coverage = json.properties.meta.radar_coverage;
+  if (coverage && coverage !== 'ok') return { url, none: `radar: ${coverage}` };
   const series = json.properties.timeseries;
   const temp = series[0]?.data.instant.details.air_temperature ?? null;
   const steps = series.map((ts) => ({ t: Date.parse(ts.time), rate: ts.data.instant.details.precipitation_rate ?? 0 }));

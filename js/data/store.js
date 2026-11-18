@@ -101,7 +101,14 @@ export class DataStore {
       openmeteo: () => fetchOpenMeteo(lat, lon, this.abort.signal),
       // MET's radar nowcast only covers the Nordics; elsewhere it fails without CORS
       // headers, so don't ask (Open-Meteo's 15-minutely data is used instead).
-      ...(lat > 52.5 && lat < 75 && lon > -15 && lon < 37 ? { nowcast: () => fetchNowcast(lat, lon, this.abort.signal) } : {}),
+      // A 'temporarily unavailable' blip (seen intermittently for Bodø) keeps the last
+      // good radar nowcast while it is recent, instead of dropping to Open-Meteo.
+      ...(lat > 52.5 && lat < 75 && lon > -15 && lon < 37 ? { nowcast: async () => {
+        const d = await fetchNowcast(lat, lon, this.abort.signal);
+        const prev = this.raw.nowcast, s = this.sources.nowcast;
+        const since = prev?.keptFrom ?? s?.fetchedAt; // when the kept data was really fetched
+        return d.none && prev && !prev.none && since > Date.now() - 20 * MIN ? { ...prev, keptFrom: since } : d;
+      } } : {}),
       // Tides: Kartverket covers Norway (incl. Svalbard); Open-Meteo Marine is the global fallback.
       ...(lat > 57 && lat < 82 && lon > 2 && lon < 33 ? { kartverket: () => fetchKartverket(lat, lon, this.abort.signal, now()) } : {}),
       marine: () => fetchMarine(lat, lon, this.abort.signal),
@@ -195,9 +202,10 @@ export class DataStore {
 
     // Nowcast: MET radar nowcast if available, else Open-Meteo 15-minutely.
     if (mock) this.nowcast = { ...mock.nowcast, src: 'mock' };
-    else if (nowcast) this.nowcast = { ...nowcast, src: 'nowcast' };
+    else if (nowcast && !nowcast.none) this.nowcast = { ...nowcast, src: 'nowcast' };
     else if (om?.nowcast) this.nowcast = { ...om.nowcast, src: 'openmeteo' };
     else this.nowcast = null;
+    if (this.sources.nowcast && nowcast) this.sources.nowcast.note = nowcast.none || null;
 
     // Kp: the 3-hourly JSON feed first; the 3-day text forecast fills any gaps in it
     // (NOAA sometimes drops the current day), then the coarse daily outlook fills the rest.
